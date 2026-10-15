@@ -3,7 +3,8 @@
 //   отрезок от эталона до цены — переплата на единицу у строк вопроса;
 //   полоса — рынок по месяцам: медиана ± допуск, квадраты — сами рыночные точки;
 //   перекрестие находит ближайшую дату, подсказка показывает все ряды на эту дату (мышь, касание, стрелки).
-// Палитра проверена validate_palette.js (--pairs all, поверхность #FDFDFB): янтарь, синий, бирюзовый;
+// Палитра — токены --chart-* (styles.css), проверены validate_palette.js для светлой (#FDFDFB) и тёмной (#1C1F1D)
+// поверхностей (--pairs all): янтарь — поставщик вопроса, синий, бирюзовый;
 // остальные поставщики — серые «Другие» без линии. Таблица строк под графиком — его текстовая версия.
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import type { PriceHistory, PricePoint } from "../api/client";
@@ -11,9 +12,9 @@ import { MONTHS, date, docNumber, int, qty, unit as unitText } from "../format";
 import { chartHeight, useFullscreen } from "./chartFrame";
 import { Icon } from "./Icon";
 
-const SLOT = ["#256abf", "#199e70"];
-const QUESTION = "#9A5B00";
-const OTHER = "#8a8f8b";
+const SLOT = ["var(--chart-1)", "var(--chart-2)"];
+const QUESTION = "var(--chart-q)";
+const OTHER = "var(--chart-other)";
 const DAY = 86_400_000;
 
 type Series = { name: string; color: string; question: boolean; line: boolean; points: (PricePoint & { t: number })[] };

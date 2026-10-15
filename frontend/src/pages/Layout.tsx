@@ -4,6 +4,7 @@ import { NavLink, Navigate, Outlet, useLocation, useMatch } from "react-router";
 import { api } from "../api/client";
 import { Icon, type IconName } from "../components/Icon";
 import { BrandMark } from "../components/RunPicker";
+import { ThemeSwitch } from "../components/ThemeSwitch";
 import { ErrorBoundary, OfflineBar } from "../components/Resilience";
 import { Skeleton } from "../components/State";
 import { ToastProvider } from "../components/Toast";
@@ -115,6 +116,7 @@ function UserBlock({ name, role, org }: { name: string; role: string; org: strin
       <span className="side-user-role">
         {role} · {org}
       </span>
+      <ThemeSwitch />
       <button type="button" className="btn btn-link side-logout" onClick={() => logout.mutate()}>
         <Icon name="logout" size={16} />
         Выйти
@@ -139,6 +141,8 @@ export function MobileHead({ children }: { children?: ReactNode }) {
           <span className="muted small">
             {m ? ROLE_TEXT[m.role] : ""} · {m?.org.name}
           </span>
+          <span className="muted small">Тема</span>
+          <ThemeSwitch />
           <button type="button" className="btn btn-secondary" onClick={() => logout.mutate()}>
             Выйти
           </button>

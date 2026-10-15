@@ -22,6 +22,22 @@
   --band: #efede6;
   --track: #eceae3;
   --shadow-pop: 0 8px 24px rgba(27, 29, 28, 0.16);
+  --shadow-bar: 0 -6px 16px rgba(27, 29, 28, 0.06);
+  --confirmed-hover: #861f19;
+  /* подсказки графиков и тосты — тёмная плашка в обеих темах */
+  --tip-bg: #1b1d1c;
+  --tip-ink: #d9d7cf;
+  --tip-strong: #fdfdfb;
+  --tip-track: #3a3e3c;
+  /* ряды графиков: проверены validate_palette.js на поверхности #FDFDFB */
+  --chart-q: #9a5b00; /* поставщик вопроса */
+  --chart-1: #256abf;
+  --chart-2: #199e70;
+  --chart-other: #8a8f8b;
+  --rule-p01: #256abf;
+  --rule-p03: #199e70;
+  --rule-p02: #6250d6;
+  --rule-p06: #9a5b00;
 
   --r-sharp: 2px;
   --r-ctl: 6px;
@@ -29,6 +45,88 @@
   --font: "Golos Text", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
   color-scheme: light;
+}
+
+/* тёмная тема: не инверсия, а свои ступени — тёплый почти чёрный фон, светлее акцент, янтарь и красный.
+   Системная настройка — если человек не выбрал тему явно; явный выбор — data-theme на <html>.
+   Только для экрана: печать всегда светлая. */
+@media screen and (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121413;
+    --surface: #1c1f1d;
+    --ink: #ecebe6;
+    --ink-mid: #cfcec7;
+    --ink-soft: #a5a8a3;
+    --line: #2f3431;
+    --line-soft: #262a28;
+    --line-strong: #434a46;
+    --accent: #8cc2ae;
+    --accent-hover: #a9d6c4;
+    --accent-tint: #20302a;
+    --over: #e2a54f;
+    --over-tint: #33281a;
+    --over-ink: #f2cf98;
+    --confirmed: #f0857a;
+    --confirmed-hover: #f5a299;
+    --justified: #9ea29f;
+    --band: #262b28;
+    --track: #2b302d;
+    --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.55);
+    --shadow-bar: 0 -6px 16px rgba(0, 0, 0, 0.4);
+    --tip-bg: #2c312e;
+    --tip-ink: #c9c8c1;
+    --tip-strong: #f4f3ee;
+    --tip-track: #4a514d;
+    /* ряды графиков: свои ступени для тёмной поверхности #1C1F1D, проверены validate_palette.js --mode dark */
+    --chart-q: #c98500;
+    --chart-1: #3987e5;
+    --chart-2: #1fae7e;
+    --chart-other: #8d918e;
+    --rule-p01: #3987e5;
+    --rule-p03: #1fae7e;
+    --rule-p02: #9085e9;
+    --rule-p06: #c98500;
+    color-scheme: dark;
+  }
+}
+@media screen {
+  :root[data-theme="dark"] {
+    --bg: #121413;
+    --surface: #1c1f1d;
+    --ink: #ecebe6;
+    --ink-mid: #cfcec7;
+    --ink-soft: #a5a8a3;
+    --line: #2f3431;
+    --line-soft: #262a28;
+    --line-strong: #434a46;
+    --accent: #8cc2ae;
+    --accent-hover: #a9d6c4;
+    --accent-tint: #20302a;
+    --over: #e2a54f;
+    --over-tint: #33281a;
+    --over-ink: #f2cf98;
+    --confirmed: #f0857a;
+    --confirmed-hover: #f5a299;
+    --justified: #9ea29f;
+    --band: #262b28;
+    --track: #2b302d;
+    --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.55);
+    --shadow-bar: 0 -6px 16px rgba(0, 0, 0, 0.4);
+    --tip-bg: #2c312e;
+    --tip-ink: #c9c8c1;
+    --tip-strong: #f4f3ee;
+    --tip-track: #4a514d;
+    /* ряды графиков: свои ступени для тёмной поверхности #1C1F1D, проверены validate_palette.js --mode dark */
+    --chart-q: #c98500;
+    --chart-1: #3987e5;
+    --chart-2: #1fae7e;
+    --chart-other: #8d918e;
+    --rule-p01: #3987e5;
+    --rule-p03: #1fae7e;
+    --rule-p02: #9085e9;
+    --rule-p06: #c98500;
+    color-scheme: dark;
+  }
 }
 
 *,
@@ -256,6 +354,43 @@ kbd {
 .usermenu-name {
   font-weight: 600;
 }
+/* переключатель темы: в боковой панели и в меню телефона */
+.theme-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  background: var(--surface);
+  justify-self: start;
+}
+.theme-switch button {
+  width: 36px;
+  height: 32px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--ink-soft);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.theme-switch button:hover {
+  color: var(--ink);
+}
+.theme-switch button.on {
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+.sidebar .theme-switch {
+  margin-top: 8px;
+}
+/* в меню телефона — палец, а не курсор: кнопки крупнее */
+.usermenu .theme-switch button {
+  width: 52px;
+  height: 40px;
+}
 
 .page-head {
   display: none;
@@ -341,7 +476,7 @@ kbd {
   color: var(--surface);
 }
 .btn-danger:hover:not(:disabled) {
-  background: #861f19;
+  background: var(--confirmed-hover);
 }
 .btn-outline {
   border-color: var(--accent);
@@ -1278,7 +1413,7 @@ a.cut-row:hover {
   color: var(--surface);
 }
 .decide-confirmed:hover:not(:disabled) {
-  background: #861f19;
+  background: var(--confirmed-hover);
 }
 .decide-justified {
   border-color: var(--accent);
@@ -1322,7 +1457,7 @@ a.cut-row:hover {
   padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
   background: var(--surface);
   border-top: 1px solid var(--line);
-  box-shadow: 0 -6px 16px rgba(27, 29, 28, 0.06);
+  box-shadow: var(--shadow-bar);
   display: grid;
   gap: 8px;
 }
@@ -1546,8 +1681,8 @@ a.cut-row:hover {
   width: 236px;
   padding: 10px 12px;
   border-radius: var(--r-ctl);
-  background: var(--ink);
-  color: #d9d7cf;
+  background: var(--tip-bg);
+  color: var(--tip-ink);
   font-size: 12px;
   line-height: 17px;
   display: grid;
@@ -1556,7 +1691,7 @@ a.cut-row:hover {
   box-shadow: var(--shadow-pop);
 }
 .ch-tip strong {
-  color: var(--surface);
+  color: var(--tip-strong);
   font-weight: 600;
 }
 .ch-tip .mono {
@@ -1706,7 +1841,7 @@ a.cut-row:hover {
   top: 8px;
 }
 .ch-tip-date {
-  color: var(--surface);
+  color: var(--tip-strong);
   font-weight: 600;
   margin-bottom: 4px;
 }
@@ -1726,7 +1861,7 @@ a.cut-row:hover {
   align-self: center;
 }
 .ch-tip-row strong {
-  color: var(--surface);
+  color: var(--tip-strong);
   font-variant-numeric: tabular-nums;
 }
 .ch-tip-market {
@@ -1735,6 +1870,18 @@ a.cut-row:hover {
 .ch-tip-doc {
   margin-top: 4px;
   font-size: 11px;
+}
+@media screen {
+  :root[data-theme="dark"] .ch-tip,
+  :root[data-theme="dark"] .toast-done {
+    border: 1px solid var(--line-strong);
+  }
+}
+@media screen and (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .ch-tip,
+  :root:not([data-theme="light"]) .toast-done {
+    border: 1px solid var(--line-strong);
+  }
 }
 .ch-tip-dock {
   position: static;
@@ -2223,8 +2370,8 @@ a.cut-row:hover {
   animation: toast-in 180ms ease-out;
 }
 .toast-done {
-  background: var(--ink);
-  color: var(--surface);
+  background: var(--tip-bg);
+  color: var(--tip-strong);
 }
 .toast-error {
   background: var(--surface);
@@ -2258,12 +2405,12 @@ a.cut-row:hover {
 }
 .toast-timer {
   height: 2px;
-  background: var(--ink-mid);
+  background: var(--tip-track);
 }
 .toast-timer span {
   display: block;
   height: 2px;
-  background: var(--surface);
+  background: var(--tip-strong);
   animation: toast-timer linear forwards;
 }
 @keyframes toast-timer {

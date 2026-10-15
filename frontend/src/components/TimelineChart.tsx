@@ -1,5 +1,5 @@
 // Возможная переплата по месяцам, столбцы разбиты по правилам (строка — правилу с наибольшим вкладом).
-// Палитра правил проверена validate_palette.js (соседние пары в стопке, поверхность #FDFDFB).
+// Палитра правил — токены --rule-* (styles.css), проверены validate_palette.js в обеих темах (соседние пары в стопке).
 // Подпись — только у максимального месяца; остальное — ось, подсказка и скрытая таблица для скринридеров.
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import type { Schemas } from "../api/client";
@@ -12,10 +12,10 @@ type Month = Schemas["TimelineMonth"];
 
 // порядок в стопке снизу вверх и цвета — фиксированы за правилом
 const RULES: { code: string; color: string }[] = [
-  { code: "P-01", color: "#256abf" },
-  { code: "P-03", color: "#199e70" },
-  { code: "P-02", color: "#6250d6" },
-  { code: "P-06", color: "#9A5B00" },
+  { code: "P-01", color: "var(--rule-p01)" },
+  { code: "P-03", color: "var(--rule-p03)" },
+  { code: "P-02", color: "var(--rule-p02)" },
+  { code: "P-06", color: "var(--rule-p06)" },
 ];
 
 const label = (m: string) => {
@@ -85,7 +85,7 @@ export function TimelineChart({ months, height: heightProp, title }: { months: M
       ))}
       {other.some((v) => v > 0) && (
         <span>
-          <i className="lg-rect" style={{ background: "#8a8f8b" }} /> Другие правила
+          <i className="lg-rect" style={{ background: "var(--chart-other)" }} /> Другие правила
         </span>
       )}
     </figcaption>
@@ -157,7 +157,7 @@ export function TimelineChart({ months, height: heightProp, title }: { months: M
           {months.map((mo, i) => {
             const cx = L + slot * i + slot / 2;
             let acc = 0;
-            const segs = [...used.map((r) => ({ color: r.color, v: Number(mo.by_rule[r.code] ?? 0) })), { color: "#8a8f8b", v: other[i]! }].filter(
+            const segs = [...used.map((r) => ({ color: r.color, v: Number(mo.by_rule[r.code] ?? 0) })), { color: "var(--chart-other)", v: other[i]! }].filter(
               (s) => s.v > 0,
             );
             return (
