@@ -28,6 +28,7 @@ from secondkey.api.schemas import (
     RunIn,
     RunOut,
     RunSummary,
+    TimelineMonth,
 )
 from secondkey.config import settings
 from secondkey.db.models import (
@@ -293,6 +294,9 @@ async def price_history(
                 ref=r.doc_no,
                 flagged=r.overpayment > 0,
                 line_id=r.id,
+                qty=r.qty_base,
+                overpayment=r.overpayment,
+                object=r.object_name,
             )
             for r in rows
             if r.price_base is not None
@@ -376,3 +380,52 @@ async def digest(run_id: uuid.UUID, session: Session, member: Member = require(*
     )
     text, by = await owner_digest_text(inputs)
     return DigestOut(text=text, by=by)
+
+
+@router.get("/{run_id}/timeline", response_model=list[TimelineMonth])
+async def timeline(run_id: uuid.UUID, session: Session, member: Member = require(*SEE_ALL)) -> list[TimelineMonth]:
+    """Помесячно: закупки, возможная переплата и её разбивка по правилам (строка — правилу с наибольшим вкладом)."""
+    await _run(session, run_id, member)
+    months: dict[str, dict] = {}
+    rows = (
+        await session.execute(
+            select(PurchaseLine.id, PurchaseLine.date, PurchaseLine.amount, PurchaseLine.overpayment).where(
+                PurchaseLine.run_id == run_id
+            )
+        )
+    ).all()
+    month_of: dict[uuid.UUID, str] = {}
+    for lid, d, amount, over in rows:
+        key = f"{d:%Y-%m}"
+        month_of[lid] = key
+        m = months.setdefault(
+            key, {"spend": Decimal(0), "overpayment": Decimal(0), "lines": 0, "flagged": 0, "rules": {}}
+        )
+        m["spend"] += amount
+        m["overpayment"] += over
+        m["lines"] += 1
+        m["flagged"] += int(over > 0)
+    best: dict[uuid.UUID, tuple[Decimal, str]] = {}
+    for code, line_id, v in (
+        await session.execute(
+            select(Finding.code, FindingLine.line_id, FindingLine.overpayment)
+            .join(FindingLine, FindingLine.finding_id == Finding.id)
+            .where(Finding.run_id == run_id)
+        )
+    ).all():
+        if v > best.get(line_id, (Decimal(0), ""))[0]:
+            best[line_id] = (v, code)
+    for line_id, (v, code) in best.items():
+        rules = months[month_of[line_id]]["rules"]
+        rules[code] = rules.get(code, Decimal(0)) + v
+    return [
+        TimelineMonth(
+            month=k,
+            spend=m["spend"],
+            overpayment=m["overpayment"],
+            by_rule=m["rules"],
+            lines=m["lines"],
+            flagged_lines=m["flagged"],
+        )
+        for k, m in sorted(months.items())
+    ]

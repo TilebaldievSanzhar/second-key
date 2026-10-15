@@ -1436,8 +1436,9 @@ a.cut-row:hover {
   fill: var(--ink-soft);
 }
 .ch-median {
+  fill: none;
   stroke: var(--justified);
-  stroke-width: 1;
+  stroke-width: 1.25;
 }
 .ch-ref {
   stroke: var(--accent);
@@ -1524,6 +1525,202 @@ a.cut-row:hover {
   width: 8px;
   height: 8px;
   border: 1.5px solid var(--justified);
+}
+
+/* графики v2: линии поставщиков, отрезки переплаты, перекрестие, подсказка по всем рядам */
+.chart-plot:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.chart-range {
+  justify-self: end;
+}
+.ch-line {
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  opacity: 0.85;
+}
+.ch-line-q {
+  opacity: 1;
+}
+.ch-gap {
+  stroke: var(--over);
+  stroke-width: 1.5;
+  opacity: 0.45;
+}
+.ch-end {
+  font-size: 11px;
+  fill: var(--ink-soft);
+}
+.ch-cap {
+  font-size: 11px;
+  font-weight: 600;
+  fill: var(--ink);
+}
+.tl-col path {
+  transition: opacity 120ms ease-out;
+}
+.chart-plot:hover .tl-col:not(.tl-col-on) path {
+  opacity: 0.55;
+}
+.ch-tip {
+  width: auto;
+  min-width: 200px;
+  max-width: 300px;
+  top: 8px;
+}
+.ch-tip-date {
+  color: var(--surface);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.ch-tip-row {
+  display: grid;
+  grid-template-columns: 10px auto 1fr;
+  gap: 8px;
+  align-items: baseline;
+}
+.ch-tip-row:not(:has(i)) {
+  grid-template-columns: auto 1fr;
+}
+.ch-tip-row i {
+  width: 10px;
+  height: 2px;
+  border-radius: 1px;
+  align-self: center;
+}
+.ch-tip-row strong {
+  color: var(--surface);
+  font-variant-numeric: tabular-nums;
+}
+.ch-tip-market {
+  background: var(--justified);
+}
+.ch-tip-doc {
+  margin-top: 4px;
+  font-size: 11px;
+}
+.legend-top {
+  order: -1;
+}
+.lg-caption {
+  color: var(--ink);
+  font-weight: 500;
+}
+.lg-line {
+  width: 14px;
+  height: 2px;
+  border-radius: 1px;
+}
+.lg-band {
+  width: 14px;
+  height: 10px;
+  background: var(--band);
+  border-top: 1.25px solid var(--justified);
+}
+.lg-ref {
+  width: 14px;
+  height: 0;
+  border-top: 1.5px dashed var(--accent);
+}
+.lg-rect {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.digest {
+  position: fixed;
+  z-index: 35;
+  left: 16px;
+  right: 16px;
+  bottom: calc(72px + env(safe-area-inset-bottom));
+  max-height: 70vh;
+  overflow: auto;
+  box-shadow: var(--shadow-pop);
+}
+@media (min-width: 1024px) {
+  .digest {
+    left: auto;
+    right: 40px;
+    bottom: auto;
+    top: 84px;
+    width: 440px;
+  }
+}
+.digest-pre {
+  white-space: pre-wrap;
+  font-family: var(--font);
+  margin: 0;
+  background: var(--bg);
+  border-radius: var(--r-sharp);
+  padding: 12px;
+}
+.ai-hint {
+  border-top: 1px dashed var(--line-strong);
+  padding-top: 8px;
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--ink-mid);
+}
+.ai-hint strong {
+  color: var(--ink);
+}
+.code {
+  font: 12px/18px var(--mono);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sharp);
+  padding: 10px 12px;
+  overflow-x: auto;
+  white-space: pre;
+  margin: 0;
+}
+.token-once {
+  background: var(--over-tint);
+  border-radius: var(--r-sharp);
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+}
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  font-size: 14px;
+  color: var(--ink);
+}
+.steps-list {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 4px;
+}
+.conn-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.conn-list .filecard {
+  flex-wrap: wrap;
+}
+#onec {
+  scroll-margin-top: 16px;
+}
+.source-tabs {
+  margin-bottom: 4px;
 }
 
 /* ---------- загрузка ---------- */

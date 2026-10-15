@@ -1,14 +1,22 @@
 // Настройки: пороги правил (собственник и финансы меняют, остальные видят) и люди с ролями.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+import { useLocation } from "react-router";
 import { api, unwrap, type Org, type Role } from "../api/client";
 import { ErrorNote, Skeleton } from "../components/State";
 import { useToast } from "../components/Toast";
 import { int } from "../format";
-import { ROLE_TEXT, canDecide, useRole } from "../session";
+import { ROLE_TEXT, canDecide, canUpload, useRole } from "../session";
 import { MobileHead } from "./Layout";
+import { OneCSection } from "./SettingsOneC";
 
 export function SettingsPage() {
+  const role = useRole();
+  const { hash } = useLocation();
+  // ссылка «Подключить 1С» из загрузок ведёт сразу к разделу
+  useEffect(() => {
+    if (hash) window.setTimeout(() => document.querySelector(hash)?.scrollIntoView({ block: "start" }), 300);
+  }, [hash]);
   const org = useQuery({ queryKey: ["org"], queryFn: () => unwrap(api.GET("/api/org")) });
   return (
     <section className="page">
@@ -23,6 +31,7 @@ export function SettingsPage() {
       </header>
       {org.isPending ? <Skeleton lines={5} /> : org.isError ? <ErrorNote error={org.error} /> : <Thresholds org={org.data} />}
       <People />
+      {canUpload(role) && <OneCSection />}
     </section>
   );
 }

@@ -1,11 +1,12 @@
 // Новая проверка: файл → колонки → проверка. Прогресс — по SSE, страницу можно закрыть: проверка идёт в фоне.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { api, unwrap, type Run, type Upload } from "../api/client";
 import { Icon } from "../components/Icon";
 import { StageProgress } from "../components/StageProgress";
 import { Empty, ErrorNote, Notice, Skeleton } from "../components/State";
+import { useToast } from "../components/Toast";
 import { LINES, QUESTIONS, count, date, dayTime, fileSize, int, moneyShort } from "../format";
 import { canUpload, useCurrentRun, useRole, useRuns } from "../session";
 import { MobileHead } from "./Layout";
@@ -42,6 +43,7 @@ export function UploadsPage() {
   const runs = useRuns();
   const running = runs.data?.items.find((r) => !TERMINAL.includes(r.status));
   const [step, setStep] = useState<Step>(running ? "check" : "file");
+  const [source, setSource] = useState<"file" | "1c">("file");
   const [upload, setUpload] = useState<Upload | null>(null);
   const [runId, setRunId] = useState<string | null>(running?.id ?? null);
   const activeRun = runId ?? running?.id ?? null;
@@ -77,6 +79,17 @@ export function UploadsPage() {
             })}
           </ol>
           {step === "file" && (
+            <div className="seg source-tabs" role="tablist" aria-label="Источник">
+              <button type="button" role="tab" aria-selected={source === "file"} className={source === "file" ? "on" : ""} onClick={() => setSource("file")}>
+                Файл Excel или CSV
+              </button>
+              <button type="button" role="tab" aria-selected={source === "1c"} className={source === "1c" ? "on" : ""} onClick={() => setSource("1c")}>
+                Из 1С
+              </button>
+            </div>
+          )}
+          {step === "file" && source === "1c" && <OneCSource onQueued={() => setStep("file")} />}
+          {step === "file" && source === "file" && (
             <FileStep
               onUploaded={(u) => {
                 setUpload(u);
@@ -177,10 +190,12 @@ function ColumnsStep({ upload, onReplace, onStarted }: { upload: Upload; onRepla
   const p = upload.preview;
   const qc = useQueryClient();
   // шапку не нашли — человек выбирает строку с заголовками среди первых строк файла
-  const [headerRow, setHeaderRow] = useState(p.header_row || 0);
+  // сопоставление «как в прошлый раз» для такой же шапки или подсказка ИИ для нестандартного файла
+  const sug = p.suggested;
+  const [headerRow, setHeaderRow] = useState(p.header_row || sug?.header_row || 0);
   const columns = p.header_row ? p.columns : headerRow ? (p.sample[headerRow - 1] ?? []) : [];
   const rows = p.header_row ? p.sample.slice(0, 5) : headerRow ? p.sample.slice(headerRow, headerRow + 5) : [];
-  const [mapping, setMapping] = useState<Record<string, number>>(p.header_row ? { ...p.mapping } : {});
+  const [mapping, setMapping] = useState<Record<string, number>>(sug ? { ...sug.mapping } : p.header_row ? { ...p.mapping } : {});
   const byCol = useMemo(() => Object.fromEntries(Object.entries(mapping).map(([f, c]) => [c, f])), [mapping]);
   const missing = REQUIRED.filter((r) => !r.ok(mapping));
 
@@ -216,6 +231,12 @@ function ColumnsStep({ upload, onReplace, onStarted }: { upload: Upload; onRepla
         </button>
       </div>
 
+      {sug?.by === "saved" && <Notice tone="accent">Колонки сопоставлены как в прошлый раз для этой формы отчёта.</Notice>}
+      {sug?.by === "ai" && (
+        <Notice tone="accent">
+          Колонки предложил ИИ — проверьте их перед запуском.{sug.notes ? ` ${sug.notes}` : ""}
+        </Notice>
+      )}
       {!p.header_row && (
         <Notice>
           Не нашли строку с заголовками.{" "}
@@ -466,3 +487,75 @@ const RUN_STATUS: Record<string, string> = {
   done: "Готово",
   failed: "Ошибка",
 };
+
+// Источник «Из 1С»: забрать строки по OData-подключению или отправить обработкой из самой 1С
+function OneCSource({ onQueued }: { onQueued: () => void }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const conns = useQuery({ queryKey: ["connections"], queryFn: () => unwrap(api.GET("/api/integrations/connections")) });
+  // период по умолчанию — последние 12 месяцев (ленивая инициализация: дата берётся один раз)
+  const [start, setStart] = useState(() => isoDay(-365));
+  const [end, setEnd] = useState(() => isoDay(0));
+  const sync = useMutation({
+    mutationFn: (id: string) =>
+      unwrap(api.POST("/api/integrations/connections/{connection_id}/sync", { params: { path: { connection_id: id } }, body: { start, end } })),
+    onSuccess: () => {
+      toast({ text: "Забираем строки из 1С — проверка появится в списке ниже" });
+      window.setTimeout(() => {
+        qc.invalidateQueries({ queryKey: ["runs"] });
+        qc.invalidateQueries({ queryKey: ["connections"] });
+      }, 3000);
+      onQueued();
+    },
+    onError: (e) => toast({ kind: "error", text: e.message }),
+  });
+  if (conns.isPending) return <Skeleton lines={3} />;
+  if (conns.isError) return <ErrorNote error={conns.error} />;
+  return (
+    <div className="file-step">
+      {conns.data.length > 0 ? (
+        <div className="panel">
+          <div className="actions">
+            <label className="field">
+              <span className="field-label">С</span>
+              <input className="input" type="date" value={start} onChange={(e) => setStart(e.target.value)} />
+            </label>
+            <label className="field">
+              <span className="field-label">По</span>
+              <input className="input" type="date" value={end} onChange={(e) => setEnd(e.target.value)} />
+            </label>
+          </div>
+          {conns.data.map((c) => (
+            <div key={c.id} className="filecard">
+              <Icon name="sheet" size={22} />
+              <div className="filecard-main">
+                <span className="filecard-name">{c.name}</span>
+                <span className="muted small">
+                  {c.base_url} · {c.last_sync_at ? `последний раз ${dayTime(c.last_sync_at)}` : "ещё не забирали"}
+                  {c.last_status === "error" && <span className="err"> · {c.last_error}</span>}
+                </span>
+              </div>
+              <button type="button" className="btn btn-primary" disabled={sync.isPending} onClick={() => sync.mutate(c.id)}>
+                Забрать и проверить
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <Empty
+          title="1С ещё не подключена"
+          action={
+            <Link className="btn btn-primary" to="/settings#onec">
+              Подключить 1С
+            </Link>
+          }
+        >
+          Два способа: обработка в самой 1С отправляет строки по токену — публиковать базу не нужно; или «Второй ключ» сам
+          забирает документы по OData, если база опубликована.
+        </Empty>
+      )}
+    </div>
+  );
+}
+
+const isoDay = (offsetDays: number) => new Date(Date.now() + offsetDays * 86_400_000).toISOString().slice(0, 10);

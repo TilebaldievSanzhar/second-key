@@ -230,7 +230,7 @@ function Card({ f }: { f: FindingDetail }) {
 
           <section className="block keys-inline">
             <h2 className="block-title">Ключи</h2>
-            <KeyOne f={f} />
+            <KeyOne f={f} showReview={decider} />
             <KeyTwo f={f} decider={decider} onReopen={() => reopen.mutate()} reopening={reopen.isPending} compact />
           </section>
 
@@ -240,7 +240,7 @@ function Card({ f }: { f: FindingDetail }) {
         </div>
 
         <aside className="card-aside">
-          <KeyOne f={f} />
+          <KeyOne f={f} showReview={decider} />
           {canDecideNow ? (
             <DecisionPanel note={note} setNote={setNote} onDecide={(d) => decide.mutate(d)} pending={decide.isPending} />
           ) : (
@@ -328,7 +328,7 @@ function Facts({ f, unit, buyer }: { f: FindingDetail; unit: string | null; buye
 
 const decidedMuted = (f: Finding) => f.status === "justified" || f.status === "data_error";
 
-function KeyOne({ f }: { f: FindingDetail }) {
+function KeyOne({ f, showReview = false }: { f: FindingDetail; showReview?: boolean }) {
   return (
     <div className={`keycard${f.answer ? "" : " keycard-pending"}`}>
       <span className="keycard-label">
@@ -350,10 +350,32 @@ function KeyOne({ f }: { f: FindingDetail }) {
           <span className="keycard-meta">
             {f.answered_by?.full_name ?? f.responsible} · {dateTime(f.answered_at)}
           </span>
+          {showReview && <AnswerReview review={f.answer_review} />}
         </>
       ) : (
         <span className="keycard-strong">Ждём ответа{f.responsible ? ` · ${f.responsible}` : ""}</span>
       )}
+    </div>
+  );
+}
+
+const VERDICT: Record<string, string> = {
+  explains: "объясняет отклонение",
+  partial: "объясняет частично",
+  does_not_explain: "не объясняет отклонение",
+};
+
+// Подсказка ИИ к ответу (prompts/answer_review): только собственнику и финансам, решение — за человеком
+function AnswerReview({ review }: { review: FindingDetail["answer_review"] }) {
+  if (!review) return null;
+  const r = review as { verdict?: string; summary?: string; checkable?: string[]; followup?: string | null };
+  return (
+    <div className="ai-hint">
+      <span>
+        <strong>Подсказка ИИ:</strong> ответ {VERDICT[r.verdict ?? ""] ?? "оценён"}. {r.summary}
+      </span>
+      {r.checkable && r.checkable.length > 0 && <span>Проверить: {r.checkable.join("; ")}.</span>}
+      {r.followup && <span>Можно уточнить: «{r.followup}»</span>}
     </div>
   );
 }

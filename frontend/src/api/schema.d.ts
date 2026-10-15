@@ -338,6 +338,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/audits/{run_id}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Timeline
+         * @description Помесячно: закупки, возможная переплата и её разбивка по правилам (строка — правилу с наибольшим вкладом).
+         */
+        get: operations["timeline_api_audits__run_id__timeline_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/findings": {
         parameters: {
             query?: never;
@@ -1236,6 +1256,18 @@ export interface components {
             flagged: boolean;
             /** Line Id */
             line_id?: string | null;
+            /**
+             * Qty
+             * @description Количество в базовой единице (покупки)
+             */
+            qty?: string | null;
+            /**
+             * Overpayment
+             * @description Переплата строки, сом (покупки)
+             */
+            overpayment?: string | null;
+            /** Object */
+            object?: string | null;
         };
         /** PurchaseIn */
         PurchaseIn: {
@@ -1430,6 +1462,29 @@ export interface components {
             start?: string | null;
             /** End */
             end?: string | null;
+        };
+        /** TimelineMonth */
+        TimelineMonth: {
+            /**
+             * Month
+             * @description ГГГГ-ММ
+             */
+            month: string;
+            /** Spend */
+            spend: string;
+            /** Overpayment */
+            overpayment: string;
+            /**
+             * By Rule
+             * @description Переплата месяца по правилам без двойного счёта
+             */
+            by_rule: {
+                [key: string]: string;
+            };
+            /** Lines */
+            lines: number;
+            /** Flagged Lines */
+            flagged_lines: number;
         };
         /** TokenCreated */
         TokenCreated: {
@@ -2186,6 +2241,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DigestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    timeline_api_audits__run_id__timeline_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-org-id"?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimelineMonth"][];
                 };
             };
             /** @description Validation Error */

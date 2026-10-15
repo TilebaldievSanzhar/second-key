@@ -1,7 +1,8 @@
 // Сводка собственника: одна главная сумма, что ждёт решения, крупнейшие вопросы, где переплата.
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
-import type { RunSummary } from "../api/client";
+import { api, unwrap, type RunSummary } from "../api/client";
 import { BreakdownList, CUT_TITLE, type Cut } from "../components/Breakdown";
 import { FindingRow } from "../components/FindingRow";
 import { Icon } from "../components/Icon";
@@ -9,6 +10,8 @@ import { KeyPair } from "../components/KeyPair";
 import { Money } from "../components/Money";
 import { RunPicker } from "../components/RunPicker";
 import { StageProgress } from "../components/StageProgress";
+import { TimelineChart } from "../components/TimelineChart";
+import { useToast } from "../components/Toast";
 import { Empty, ErrorNote, Skeleton } from "../components/State";
 import { LINES, QUESTIONS, count, date, dayMonth, int, moneyShort, pct } from "../format";
 import { canUpload, useCurrentRun, useRole, useRunFindings, useSummary, waitingQueue } from "../session";
@@ -78,6 +81,7 @@ export function OverviewPage() {
             <Icon name="printer" size={16} strokeWidth={2} />
             Отчёт для печати
           </a>
+          <DigestButton runId={s.run.id} />
           <RunPicker variant="boxed" text={(r) => `Проверка от ${date(r.created_at)}`} />
         </div>
       </header>
@@ -153,7 +157,11 @@ export function OverviewPage() {
         )}
       </section>
 
+      <Timeline runId={s.run.id} />
       <Cuts s={s} />
+      <div className="mobile-only">
+        <DigestButton runId={s.run.id} />
+      </div>
     </section>
   );
 }
@@ -193,3 +201,69 @@ const runMeta = (s: RunSummary) =>
 
 const ASK_ACCOUNTANT =
   "Добрый день! Выгрузите, пожалуйста, из 1С отчёт «Поступление товаров и услуг» по строкам за последние 12 месяцев в Excel и загрузите его во «Второй ключ».";
+
+function Timeline({ runId }: { runId: string }) {
+  const q = useQuery({
+    queryKey: ["timeline", runId],
+    queryFn: () => unwrap(api.GET("/api/audits/{run_id}/timeline", { params: { path: { run_id: runId } } })),
+  });
+  if (q.isPending) return <Skeleton lines={4} />;
+  if (q.isError) return <ErrorNote error={q.error} retry={() => q.refetch()} />;
+  if (q.data.length < 2 || !q.data.some((m) => Number(m.overpayment) > 0)) return null;
+  return (
+    <section className="block">
+      <div className="block-head">
+        <h2>Переплата по месяцам</h2>
+        <span className="muted small">по правилам, без двойного счёта</span>
+      </div>
+      <TimelineChart months={q.data} height={typeof window !== "undefined" && window.innerWidth < 768 ? 200 : 240} />
+    </section>
+  );
+}
+
+// Текст собственнику для WhatsApp: prompts/owner_digest или шаблон, если ИИ выключен
+function DigestButton({ runId }: { runId: string }) {
+  const [open, setOpen] = useState(false);
+  const toast = useToast();
+  const q = useQuery({
+    queryKey: ["digest", runId],
+    enabled: open,
+    queryFn: () => unwrap(api.GET("/api/audits/{run_id}/digest", { params: { path: { run_id: runId } } })),
+  });
+  return (
+    <>
+      <button type="button" className="btn btn-secondary" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+        Текст для WhatsApp
+      </button>
+      {open && (
+        <div className="panel digest" role="dialog" aria-label="Текст для WhatsApp">
+          {q.isPending ? (
+            <Skeleton lines={4} label="Готовим текст…" />
+          ) : q.isError ? (
+            <ErrorNote error={q.error} retry={() => q.refetch()} />
+          ) : (
+            <>
+              <pre className="digest-pre">{q.data.text}</pre>
+              <span className="muted small">{q.data.by === "ai" ? "Сформулировал ИИ, числа сверены с проверкой" : "Собрано по шаблону"}</span>
+              <div className="actions">
+                <a className="btn btn-primary" href={`https://wa.me/?text=${encodeURIComponent(q.data.text)}`} target="_blank" rel="noreferrer">
+                  Открыть WhatsApp
+                </a>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => navigator.clipboard?.writeText(q.data.text).then(() => toast({ text: "Текст скопирован" }))}
+                >
+                  Скопировать
+                </button>
+                <button type="button" className="btn btn-link" onClick={() => setOpen(false)}>
+                  Закрыть
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </>
+  );
+}

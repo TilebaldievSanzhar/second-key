@@ -99,6 +99,11 @@ async def test_summary_has_no_double_counting(done_run, as_user):
     assert abs(by_rule - Decimal(s["run"]["overpayment"])) < 1
     assert {"P-01", "P-03", "P-05"} <= {r["key"] for r in s["by_rule"]}
     assert sum(r["findings"] for r in s["by_rule"]) == s["run"]["findings_count"]
+    # помесячно: суммы сходятся с итогом проверки, разбивка по правилам — без двойного счёта
+    months = (await owner.get(f"/api/audits/{done_run['id']}/timeline")).json()
+    assert len(months) == 12 and months[0]["month"] == "2025-10"
+    assert abs(sum(Decimal(m["overpayment"]) for m in months) - Decimal(s["run"]["overpayment"])) < 1
+    assert all(abs(sum(Decimal(v) for v in m["by_rule"].values()) - Decimal(m["overpayment"])) < 1 for m in months)
     # каждая строка с переплатой отнесена ровно к одному правилу
     flagged = (await owner.get(f"/api/audits/{done_run['id']}/lines", params={"flagged": True, "limit": 1})).json()
     assert sum(r["lines"] for r in s["by_rule"]) == flagged["total"]

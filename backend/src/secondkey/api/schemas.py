@@ -273,6 +273,9 @@ class PricePoint(BaseModel):
     ref: str | None = None
     flagged: bool = False
     line_id: uuid.UUID | None = None
+    qty: Decimal | None = Field(default=None, description="Количество в базовой единице (покупки)")
+    overpayment: Decimal | None = Field(default=None, description="Переплата строки, сом (покупки)")
+    object: str | None = None
 
 
 class PriceHistory(BaseModel):
@@ -356,3 +359,12 @@ class ConnectionTestOut(BaseModel):
 class SyncIn(BaseModel):
     start: date | None = None
     end: date | None = None
+
+
+class TimelineMonth(BaseModel):
+    month: str = Field(description="ГГГГ-ММ")
+    spend: Decimal
+    overpayment: Decimal
+    by_rule: dict[str, Decimal] = Field(description="Переплата месяца по правилам без двойного счёта")
+    lines: int
+    flagged_lines: int

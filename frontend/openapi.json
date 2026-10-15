@@ -1197,6 +1197,71 @@
         }
       }
     },
+    "/api/audits/{run_id}/timeline": {
+      "get": {
+        "tags": [
+          "audits"
+        ],
+        "summary": "Timeline",
+        "description": "Помесячно: закупки, возможная переплата и её разбивка по правилам (строка — правилу с наибольшим вкладом).",
+        "operationId": "timeline_api_audits__run_id__timeline_get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "x-org-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TimelineMonth"
+                  },
+                  "title": "Response Timeline Api Audits  Run Id  Timeline Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/findings": {
       "get": {
         "tags": [
@@ -4173,6 +4238,41 @@
               }
             ],
             "title": "Line Id"
+          },
+          "qty": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qty",
+            "description": "Количество в базовой единице (покупки)"
+          },
+          "overpayment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overpayment",
+            "description": "Переплата строки, сом (покупки)"
+          },
+          "object": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Object"
           }
         },
         "type": "object",
@@ -4755,6 +4855,49 @@
         },
         "type": "object",
         "title": "SyncIn"
+      },
+      "TimelineMonth": {
+        "properties": {
+          "month": {
+            "type": "string",
+            "title": "Month",
+            "description": "ГГГГ-ММ"
+          },
+          "spend": {
+            "type": "string",
+            "title": "Spend"
+          },
+          "overpayment": {
+            "type": "string",
+            "title": "Overpayment"
+          },
+          "by_rule": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "By Rule",
+            "description": "Переплата месяца по правилам без двойного счёта"
+          },
+          "lines": {
+            "type": "integer",
+            "title": "Lines"
+          },
+          "flagged_lines": {
+            "type": "integer",
+            "title": "Flagged Lines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "month",
+          "spend",
+          "overpayment",
+          "by_rule",
+          "lines",
+          "flagged_lines"
+        ],
+        "title": "TimelineMonth"
       },
       "TokenCreated": {
         "properties": {
