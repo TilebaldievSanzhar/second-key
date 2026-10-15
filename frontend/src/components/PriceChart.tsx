@@ -8,6 +8,8 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import type { PriceHistory, PricePoint } from "../api/client";
 import { MONTHS, date, docNumber, int, qty, unit as unitText } from "../format";
+import { chartHeight, useFullscreen } from "./chartFrame";
+import { Icon } from "./Icon";
 
 const SLOT = ["#256abf", "#199e70"];
 const QUESTION = "#9A5B00";
@@ -41,7 +43,8 @@ export function PriceChart({
   lineIds,
   reference,
   tolerance,
-  height = 260,
+  height: heightProp,
+  title,
 }: {
   history: PriceHistory;
   supplier: string | null | undefined;
@@ -49,11 +52,15 @@ export function PriceChart({
   reference: number | null;
   tolerance: number;
   height?: number;
+  title?: string;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(640);
   const [hover, setHover] = useState<number | null>(null); // индекс даты в dates
   const [range, setRange] = useState<Range>("all");
+  const [zoom, setZoom] = useState<[number, number] | null>(null); // выделенный мышью период
+  const [drag, setDrag] = useState<{ x0: number; x1: number } | null>(null);
+  const { full, toggle, viewH } = useFullscreen();
 
   useEffect(() => {
     const el = box.current;
@@ -100,7 +107,7 @@ export function PriceChart({
 
   // домен: весь период или период строк вопроса ± месяц
   const all = [...series.flatMap((s) => s.points), ...market.pts];
-  const [t0, t1] = (() => {
+  const [t0, t1] = zoom ?? (() => {
     const src = range === "question" && hasQuestionRange ? qPoints : all;
     const lo = Math.min(...src.map((p) => p.t)) - (range === "question" ? 31 * DAY : 0);
     const hi = Math.max(...src.map((p) => p.t)) + (range === "question" ? 31 * DAY : 0);
@@ -110,6 +117,8 @@ export function PriceChart({
   })();
   const visible = (t: number) => t >= t0 && t < t1;
 
+  // высота — от ширины: на широком экране график не превращается в полоску; на весь экран — по окну
+  const height = full ? Math.max(320, viewH - 200) : (heightProp ?? chartHeight(width, 0.36, 240, 460));
   const endLabels = width >= 560;
   const L = 52, R = endLabels ? 112 : 12, T = 12, B = 26;
   const pw = width - L - R;
@@ -133,9 +142,20 @@ export function PriceChart({
   const X = (t: number) => L + ((t - t0) / (t1 - t0 || 1)) * pw;
   const Y = (v: number) => T + (1 - (v - lo) / (hi - lo || 1)) * ph;
 
-  const months: { t: number; m: number }[] = [];
-  for (let d = new Date(t0); d.getTime() < t1; d.setMonth(d.getMonth() + 1)) months.push({ t: d.getTime(), m: d.getMonth() });
-  const mStep = Math.ceil(44 / Math.max(pw / months.length, 1));
+  // подписи оси: месяцы, а на коротком (приближенном) периоде — недели
+  const xTicks: { t: number; label: string }[] = [];
+  if (t1 - t0 <= 75 * DAY) {
+    const d = new Date(t0);
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() + ((8 - d.getDay()) % 7)); // ближайший понедельник
+    for (; d.getTime() < t1; d.setDate(d.getDate() + 7))
+      xTicks.push({ t: d.getTime(), label: `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}` });
+  } else {
+    const a = new Date(t0);
+    for (let d = new Date(a.getFullYear(), a.getMonth() + (a.getDate() > 1 ? 1 : 0), 1); d.getTime() < t1; d.setMonth(d.getMonth() + 1))
+      xTicks.push({ t: d.getTime(), label: MONTHS[d.getMonth()]! });
+  }
+  const tStep = Math.ceil(44 / Math.max(pw / Math.max(xTicks.length, 1), 1));
 
   // даты для перекрестия: все покупки в видимом окне
   const dates = [...new Set(series.flatMap((s) => s.points.map((p) => p.t)).filter(visible))].sort((a, b) => a - b);
@@ -147,10 +167,28 @@ export function PriceChart({
     return best;
   };
 
+  const svgX = (e: PointerEvent<HTMLDivElement>) => e.clientX - (e.currentTarget.querySelector("svg")?.getBoundingClientRect().left ?? 0);
+  const tAt = (x: number) => t0 + ((Math.min(Math.max(x, L), L + pw) - L) / pw) * (t1 - t0);
+  // мышь и перо: протянуть по графику — приблизить период; касание — только подсказка
+  const onDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== "touch") setDrag({ x0: svgX(e), x1: svgX(e) });
+    onMove(e);
+  };
+  const onUp = () => {
+    if (drag && Math.abs(drag.x1 - drag.x0) > 12) {
+      const a = tAt(Math.min(drag.x0, drag.x1));
+      const b = tAt(Math.max(drag.x0, drag.x1));
+      if (b - a > 3 * DAY) {
+        setZoom([a, b]);
+        setHover(null);
+      }
+    }
+    setDrag(null);
+  };
   const onMove = (e: PointerEvent<HTMLDivElement>) => {
+    if (drag) setDrag({ ...drag, x1: svgX(e) });
     if (!dates.length) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
+    const x = svgX(e);
     let bi = 0;
     dates.forEach((t, i) => {
       if (Math.abs(X(t) - x) < Math.abs(X(dates[bi]!) - x)) bi = i;
@@ -235,18 +273,49 @@ export function PriceChart({
     </>
   ) : null;
 
+  const pickRange = (r: Range) => {
+    setRange(r);
+    setZoom(null);
+    setHover(null);
+  };
+
   return (
-    <figure className="chart">
-      {hasQuestionRange && (
-        <div className="seg chart-range" role="group" aria-label="Период графика">
-          <button type="button" className={range === "all" ? "on" : ""} aria-pressed={range === "all"} onClick={() => { setRange("all"); setHover(null); }}>
-            Весь период
-          </button>
-          <button type="button" className={range === "question" ? "on" : ""} aria-pressed={range === "question"} onClick={() => { setRange("question"); setHover(null); }}>
-            Период вопроса
+    <figure className={`chart${full ? " chart-full" : ""}`} role={full ? "dialog" : undefined} aria-label={full ? title : undefined}>
+      <div className="chart-bar">
+        {full && title ? (
+          <span className="chart-title">{title}</span>
+        ) : (
+          <span className="chart-hint desktop-only">Протяните мышью по графику, чтобы приблизить период</span>
+        )}
+        <div className="chart-tools">
+          {hasQuestionRange && (
+            <div className="seg" role="group" aria-label="Период графика">
+              <button type="button" className={range === "all" && !zoom ? "on" : ""} aria-pressed={range === "all" && !zoom} onClick={() => pickRange("all")}>
+                Весь период
+              </button>
+              <button type="button" className={range === "question" && !zoom ? "on" : ""} aria-pressed={range === "question" && !zoom} onClick={() => pickRange("question")}>
+                Период вопроса
+              </button>
+            </div>
+          )}
+          {zoom && (
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => pickRange(range)}>
+              <Icon name="zoomOut" size={16} />
+              Сбросить масштаб
+            </button>
+          )}
+          <button
+            type="button"
+            className="btn btn-icon"
+            onClick={toggle}
+            aria-label={full ? "Свернуть график" : "Развернуть график на весь экран"}
+            title={full ? "Свернуть (Esc)" : "На весь экран"}
+          >
+            <Icon name={full ? "minimize" : "maximize"} size={16} strokeWidth={2} />
           </button>
         </div>
-      )}
+      </div>
+      {full && <p className="chart-rotate">Поверните телефон горизонтально — график станет шире.</p>}
       <div
         className="chart-plot"
         ref={box}
@@ -254,8 +323,13 @@ export function PriceChart({
         role="group"
         aria-label={`${summary} Стрелки влево и вправо — по датам покупок.`}
         onPointerMove={onMove}
-        onPointerDown={onMove}
-        onPointerLeave={(e) => e.pointerType !== "touch" && setHover(null)} // на касании «уход» приходит сразу после отпускания пальца
+        onPointerDown={onDown}
+        onPointerUp={onUp}
+        onPointerLeave={(e) => {
+          if (e.pointerType === "touch") return; // на касании «уход» приходит сразу после отпускания пальца
+          setHover(null);
+          setDrag(null);
+        }}
         onKeyDown={onKey}
         onBlur={() => setHover(null)}
       >
@@ -273,10 +347,10 @@ export function PriceChart({
               </text>
             </g>
           ))}
-          {months.map((m, i) =>
-            i % mStep ? null : (
+          {xTicks.map((m, i) =>
+            i % tStep ? null : (
               <text key={m.t} x={X(m.t) + 2} y={height - 7} className="ch-tick">
-                {MONTHS[m.m]}
+                {m.label}
               </text>
             ),
           )}
@@ -320,7 +394,16 @@ export function PriceChart({
                 </text>
               </g>
             ))}
-          {hoverT !== undefined && <line x1={X(hoverT)} x2={X(hoverT)} y1={T} y2={T + ph} className="ch-cross" />}
+          {hoverT !== undefined && !drag && <line x1={X(hoverT)} x2={X(hoverT)} y1={T} y2={T + ph} className="ch-cross" />}
+          {drag && Math.abs(drag.x1 - drag.x0) > 2 && (
+            <rect
+              x={Math.max(L, Math.min(drag.x0, drag.x1))}
+              y={T}
+              width={Math.min(Math.abs(drag.x1 - drag.x0), L + pw - Math.max(L, Math.min(drag.x0, drag.x1)))}
+              height={ph}
+              className="ch-brush"
+            />
+          )}
         </svg>
         {tip && !dock && (
           <div className="ch-tip" style={tipRight ? { right: width - tipLeft + 12 } : { left: tipLeft + 12 }}>

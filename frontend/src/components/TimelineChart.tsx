@@ -5,6 +5,8 @@ import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } fr
 import type { Schemas } from "../api/client";
 import { MONTHS, int, moneyShort, pct } from "../format";
 import { RULE_TEXT } from "../questions";
+import { chartHeight, useFullscreen } from "./chartFrame";
+import { Icon } from "./Icon";
 
 type Month = Schemas["TimelineMonth"];
 
@@ -23,10 +25,11 @@ const label = (m: string) => {
 const compact = (v: number) =>
   v >= 1e6 ? `${(v / 1e6).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} млн` : v >= 1e3 ? `${Math.round(v / 1e3)} тыс` : String(v);
 
-export function TimelineChart({ months, height = 220 }: { months: Month[]; height?: number }) {
+export function TimelineChart({ months, height: heightProp, title }: { months: Month[]; height?: number; title?: string }) {
   const box = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(640);
   const [active, setActive] = useState<number | null>(null);
+  const { full, toggle, viewH } = useFullscreen();
   useEffect(() => {
     const el = box.current;
     if (!el) return;
@@ -35,6 +38,7 @@ export function TimelineChart({ months, height = 220 }: { months: Month[]; heigh
     return () => ro.disconnect();
   }, []);
 
+  const height = full ? Math.max(300, viewH - 200) : (heightProp ?? chartHeight(width, width < 900 ? 0.46 : 0.26, 220, 380));
   const used = RULES.filter((r) => months.some((m) => Number(m.by_rule[r.code] ?? 0) > 0));
   const other = months.map((m) =>
     Object.entries(m.by_rule).filter(([c]) => !RULES.some((r) => r.code === c)).reduce((a, [, v]) => a + Number(v), 0),
@@ -72,6 +76,21 @@ export function TimelineChart({ months, height = 220 }: { months: Month[]; heigh
   };
 
   const m = active !== null ? months[active] : undefined;
+  const legend = (
+  <figcaption className="legend legend-top">
+      {used.map((r) => (
+        <span key={r.code}>
+          <i className="lg-rect" style={{ background: r.color }} /> {RULE_TEXT[r.code]}
+        </span>
+      ))}
+      {other.some((v) => v > 0) && (
+        <span>
+          <i className="lg-rect" style={{ background: "#8a8f8b" }} /> Другие правила
+        </span>
+      )}
+    </figcaption>
+  );
+
   // подсказка: на десктопе — у курсора, на узком экране — панелью под графиком
   const dock = width < 560;
   const tip = m ? (
@@ -97,19 +116,23 @@ export function TimelineChart({ months, height = 220 }: { months: Month[]; heigh
   ) : null;
 
   return (
-    <figure className="chart">
-      <figcaption className="legend legend-top">
-        {used.map((r) => (
-          <span key={r.code}>
-            <i className="lg-rect" style={{ background: r.color }} /> {RULE_TEXT[r.code]}
-          </span>
-        ))}
-        {other.some((v) => v > 0) && (
-          <span>
-            <i className="lg-rect" style={{ background: "#8a8f8b" }} /> Другие правила
-          </span>
-        )}
-      </figcaption>
+    <figure className={`chart${full ? " chart-full" : ""}`} role={full ? "dialog" : undefined} aria-label={full ? title : undefined}>
+      <div className="chart-bar">
+        {full && title ? <span className="chart-title">{title}</span> : legend}
+        <div className="chart-tools">
+          <button
+            type="button"
+            className="btn btn-icon"
+            onClick={toggle}
+            aria-label={full ? "Свернуть график" : "Развернуть график на весь экран"}
+            title={full ? "Свернуть (Esc)" : "На весь экран"}
+          >
+            <Icon name={full ? "minimize" : "maximize"} size={16} strokeWidth={2} />
+          </button>
+        </div>
+      </div>
+      {full && legend}
+      {full && <p className="chart-rotate">Поверните телефон горизонтально — график станет шире.</p>}
       <div
         className="chart-plot"
         ref={box}

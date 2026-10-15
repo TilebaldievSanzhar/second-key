@@ -178,7 +178,7 @@ function Card({ f }: { f: FindingDetail }) {
           lineIds={lineIds}
           reference={f.reference ? Number(f.reference) : null}
           tolerance={tolerance}
-          height={typeof window !== "undefined" && window.innerWidth < 768 ? 210 : 280}
+          title={`${history.data.label ?? "Цена позиции"} · цена за ${PER_UNIT[u ?? ""] ?? unitText(u)}`}
         />
         {history.data.market.length === 0 && <p className="muted small">Рыночных цен по позиции пока нет — сравниваем только с вашими поставщиками.</p>}
       </section>

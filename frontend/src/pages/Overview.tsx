@@ -139,6 +139,7 @@ export function OverviewPage() {
         </div>
       </div>
 
+      <div className="ov-grid">
       <section className="block">
         <div className="block-head">
           <h2>Крупнейшие вопросы</h2>
@@ -158,6 +159,7 @@ export function OverviewPage() {
       </section>
 
       <Timeline runId={s.run.id} />
+      </div>
       <Cuts s={s} />
       <div className="mobile-only">
         <DigestButton runId={s.run.id} />
@@ -216,7 +218,7 @@ function Timeline({ runId }: { runId: string }) {
         <h2>Переплата по месяцам</h2>
         <span className="muted small">по правилам, без двойного счёта</span>
       </div>
-      <TimelineChart months={q.data} height={typeof window !== "undefined" && window.innerWidth < 768 ? 200 : 240} />
+      <TimelineChart months={q.data} title="Возможная переплата по месяцам" />
     </section>
   );
 }
