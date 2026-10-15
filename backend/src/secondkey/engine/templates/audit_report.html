@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Аудит закупок · {{ company }}</title>
+<style>
+/* Журнал аудитора: сводка наверху, ниже находки с раскрытием до строк учёта */
+:root{
+  --bg:#f5f6f7; --card:#ffffff; --ink:#15202a; --ink-2:#44515c; --ink-3:#6b7783;
+  --rule:#dde2e6; --accent:#0e6b5c; --accent-wash:#e3f1ee; --high:#b3261e; --mid:#8a5a00; --info:#4b5a66;
+  --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --bg:#0f1417; --card:#161d22; --ink:#e4eaee; --ink-2:#b2bdc6; --ink-3:#8795a1;
+    --rule:#26313a; --accent:#5cc4ae; --accent-wash:#123430; --high:#ff8a80; --mid:#f0b429; --info:#9fb0bd; color-scheme: dark; }
+}
+:root[data-theme="dark"]{ --bg:#0f1417; --card:#161d22; --ink:#e4eaee; --ink-2:#b2bdc6; --ink-3:#8795a1;
+  --rule:#26313a; --accent:#5cc4ae; --accent-wash:#123430; --high:#ff8a80; --mid:#f0b429; --info:#9fb0bd; color-scheme: dark; }
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 var(--sans)}
+.wrap{max-width:1180px;margin:0 auto;padding:32px 20px 64px}
+header{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:flex-end;border-bottom:2px solid var(--ink);padding-bottom:14px}
+.eyebrow{font:12px/1.4 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin:0 0 6px}
+h1{font-size:30px;line-height:1.15;margin:0}
+.meta{font-size:13px;color:var(--ink-2);text-align:right}
+.hero{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,2fr);gap:18px;margin:22px 0}
+.big{background:var(--card);border:1px solid var(--rule);padding:18px 20px}
+.big .v{font-size:40px;font-weight:650;letter-spacing:-.01em;line-height:1.1}
+.big .l{color:var(--ink-2);margin-top:6px}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));background:var(--card);border:1px solid var(--rule)}
+.stats div{padding:12px 14px;border-right:1px solid var(--rule);border-bottom:1px solid var(--rule)}
+.stats .v{font-size:20px;font-weight:600}
+.stats .l{font-size:12.5px;color:var(--ink-2)}
+@media (max-width:760px){.hero{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.meta{text-align:left}}
+.note{background:var(--accent-wash);border-left:3px solid var(--accent);padding:10px 14px;font-size:14px;color:var(--ink-2);max-width:90ch}
+h2{font-size:20px;margin:36px 0 10px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+@media (max-width:860px){.grid2{grid-template-columns:1fr}}
+.tbl{overflow-x:auto;background:var(--card);border:1px solid var(--rule)}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{padding:7px 10px;border-bottom:1px solid var(--rule);text-align:left;vertical-align:top}
+th{font:11.5px/1.3 var(--mono);text-transform:uppercase;letter-spacing:.04em;color:var(--ink-2);background:var(--bg)}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+.finding{background:var(--card);border:1px solid var(--rule);margin:12px 0}
+.finding summary{list-style:none;cursor:pointer;padding:12px 14px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:baseline}
+.finding summary::-webkit-details-marker{display:none}
+.finding[open] summary{border-bottom:1px solid var(--rule)}
+.code{font:12px var(--mono);border:1px solid currentColor;padding:2px 6px;white-space:nowrap}
+.sev-high{color:var(--high)} .sev-medium{color:var(--mid)} .sev-info{color:var(--info)}
+.msg{color:var(--ink)}
+.msg small{display:block;color:var(--ink-3);margin-top:2px}
+.amt{font-weight:650;white-space:nowrap;font-variant-numeric:tabular-nums}
+.finding .tbl{border:0}
+.muted{color:var(--ink-3)}
+footer{margin-top:40px;padding-top:14px;border-top:1px solid var(--rule);font-size:13px;color:var(--ink-3)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div>
+    <p class="eyebrow">Аудит закупок материалов</p>
+    <h1>{{ company }}</h1>
+  </div>
+  <div class="meta">
+    Период: {% if period %}{{ period[0].strftime('%d.%m.%Y') }} — {{ period[1].strftime('%d.%m.%Y') }}{% else %}—{% endif %}<br>
+    Сформирован {{ generated.strftime('%d.%m.%Y') }}
+  </div>
+</header>
+
+<section class="hero">
+  <div class="big">
+    <div class="v">{{ over|money }} сом</div>
+    <div class="l">потенциальная переплата — {{ over_share|pct }} проверенного оборота {{ spend|money }} сом</div>
+  </div>
+  <div class="stats">
+    <div><span class="v">{{ lines }}</span><br><span class="l">строк учёта</span></div>
+    <div><span class="v">{{ ok_share|pct(0) }}</span><br><span class="l">строк распознано автоматически</span></div>
+    <div><span class="v">{{ skus }}</span><br><span class="l">позиций материалов</span></div>
+    <div><span class="v">{{ suppliers }}</span><br><span class="l">поставщиков</span></div>
+    <div><span class="v">{{ findings|length }}</span><br><span class="l">находок с оценкой денег</span></div>
+    <div><span class="v">{{ market_points }}</span><br><span class="l">рыночных цен в эталоне</span></div>
+  </div>
+</section>
+
+<p class="note">Это оценка, а не обвинение. Каждая сумма посчитана по строкам вашего учёта и раскрывается до документа.
+У отклонения может быть причина: срочность, качество, отсрочка платежа. Находки — это вопросы к снабжению, решение за вами.
+Одна строка не считается дважды: если под неё попали несколько правил, в итог идёт большая оценка.</p>
+
+<h2>Где переплата</h2>
+<div class="grid2">
+  <div class="tbl"><table>
+    <thead><tr><th>Правило</th><th class="n">Находок</th><th class="n">Переплата, сом</th></tr></thead>
+    <tbody>
+    {% for r in rules %}<tr><td><span class="code">{{ r.code }}</span> {{ r.title }}</td><td class="n">{{ r.count }}</td><td class="n">{{ r.money|money if r.money else '—' }}</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  <div class="tbl"><table>
+    <thead><tr><th>Ответственный</th><th class="n">Оборот, сом</th><th class="n">Переплата</th><th class="n">Доля</th></tr></thead>
+    <tbody>
+    {% for r in by_who %}<tr><td>{{ r.name }}</td><td class="n">{{ r.spend|money }}</td><td class="n">{{ r.over|money }}</td><td class="n">{{ r.share|pct }}</td></tr>{% else %}<tr><td colspan="4" class="muted">нет данных об ответственных</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+
+<div class="grid2" style="margin-top:18px">
+  <div class="tbl"><table>
+    <thead><tr><th>Поставщик</th><th class="n">Оборот, сом</th><th class="n">Переплата</th><th class="n">Доля</th></tr></thead>
+    <tbody>
+    {% for r in by_supplier %}<tr><td>{{ r.name }}</td><td class="n">{{ r.spend|money }}</td><td class="n">{{ r.over|money }}</td><td class="n">{{ r.share|pct }}</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  <div class="tbl"><table>
+    <thead><tr><th>Материал</th><th class="n">Оборот, сом</th><th class="n">Переплата</th><th class="n">Доля</th></tr></thead>
+    <tbody>
+    {% for r in by_head %}<tr><td>{{ r.name }}</td><td class="n">{{ r.spend|money }}</td><td class="n">{{ r.over|money }}</td><td class="n">{{ r.share|pct }}</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+
+<h2>Находки с оценкой денег</h2>
+{% for item in findings %}{% set f = item.f %}
+<details class="finding"{% if loop.index <= 5 %} open{% endif %}>
+  <summary><span class="code sev-{{ f.severity }}">{{ f.code }}</span>
+    <span class="msg">{{ f.message }}<small>{{ f.title }}{% if f.reference %} · эталон {{ f.reference|money }} сом за {{ item.rows[0].unit_base if item.rows else '' }}{% endif %}</small></span>
+    <span class="amt">{{ f.overpayment|money }} сом</span></summary>
+  <div class="tbl"><table>
+    <thead><tr><th>Дата</th><th>Документ</th><th>Объект</th><th>Ответственный</th><th>Номенклатура в учёте</th><th class="n">Кол-во</th><th class="n">Цена в учёте</th><th class="n">За базовую ед.</th><th class="n">Переплата</th></tr></thead>
+    <tbody>
+    {% for r in item.rows %}<tr><td>{{ r.date }}</td><td>{{ r.doc }}<br><span class="muted">стр. {{ r.row }}</span></td><td>{{ r.object }}</td><td>{{ r.who }}</td><td>{{ r.item }}</td><td class="n">{{ r.qty|qty }} {{ r.unit }}</td><td class="n">{{ r.price|money }}</td><td class="n">{{ r.price_base|money }} / {{ r.unit_base }}</td><td class="n">{{ r.over|money if r.over else '—' }}</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</details>
+{% else %}<p class="muted">Находок с оценкой денег нет.</p>{% endfor %}
+
+<h2>Сигналы без оценки денег</h2>
+{% for item in signals %}{% set f = item.f %}
+<details class="finding">
+  <summary><span class="code sev-{{ f.severity }}">{{ f.code }}</span><span class="msg">{{ f.message }}<small>{{ f.title }}</small></span><span class="amt muted">—</span></summary>
+  <div class="tbl"><table>
+    <thead><tr><th>Дата</th><th>Документ</th><th>Поставщик</th><th>Номенклатура в учёте</th><th class="n">Кол-во</th><th class="n">Цена в учёте</th><th class="n">Сумма</th></tr></thead>
+    <tbody>
+    {% for r in item.rows %}<tr><td>{{ r.date }}</td><td>{{ r.doc }}</td><td>{{ r.supplier }}</td><td>{{ r.item }}</td><td class="n">{{ r.qty|qty }} {{ r.unit }}</td><td class="n">{{ r.price|money }}</td><td class="n">{{ (r.qty * r.price)|money }}</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</details>
+{% else %}<p class="muted">Сигналов нет.</p>{% endfor %}
+
+<h2>Качество данных</h2>
+<p>Автоматически распознано {{ ok_lines }} из {{ lines }} строк. {{ needs_count }} строк требуют разбора человеком:
+нет материала или различающего атрибута (диаметра, марки, размера), без которого сравнивать цены нельзя.
+{% if warnings_count %}При импорте {{ warnings_count }} предупреждений.{% endif %}</p>
+{% if needs %}<div class="tbl"><table>
+  <thead><tr><th>Строка</th><th>Номенклатура</th><th>Причина</th></tr></thead>
+  <tbody>{% for nl in needs %}<tr><td>{{ nl.line.source_row }}</td><td>{{ nl.line.item_raw }}</td><td class="muted">{{ nl.note }}</td></tr>{% endfor %}</tbody>
+</table></div>{% endif %}
+{% if warnings %}<details class="finding"><summary><span class="code sev-info">ИМПОРТ</span><span class="msg">Предупреждения импорта</span><span></span></summary>
+<div class="tbl"><table><tbody>{% for w in warnings %}<tr><td>{{ w }}</td></tr>{% endfor %}</tbody></table></div></details>{% endif %}
+
+<h2>Как считали</h2>
+<ul>
+  <li>Номенклатура приводится к позиции: материал + различающие атрибуты (диаметр, класс, марка, размеры, фракция). Разные товары не склеиваются: при сомнении строка уходит на ручной разбор.</li>
+  <li>Цены переводятся в базовую единицу позиции кодом: кг → т, мешок 50 кг → т, метр арматуры → т по ГОСТ 5781.</li>
+  <li>P-01: эталон — самый дешёвый другой поставщик той же позиции в окне ±30 дней; цены сравниваются в долях месячного индекса позиции, чтобы сезонный рост не считался переплатой; допуск 5%.</li>
+  <li>P-02: цена поставщика относительно эталона в начале и в конце периода; переплата — сверх роста вместе с рынком.</li>
+  <li>P-03: эталон — медиана рыночных цен (госзакупки КР) в окне ±60 дней, нужно не меньше 3 точек; переплата считается только сверх допуска 10% — это оценка снизу.</li>
+  <li>P-06: повтор строки с тем же поставщиком, документом, номенклатурой, количеством и суммой.</li>
+  <li>P-04, P-05, P-07 — сигналы без денежной оценки: концентрация, дробление (3+ покупки за неделю на один объект, каждая на 80–100% порога согласования), ошибки единиц.</li>
+</ul>
+
+<footer>Второй ключ · аудит закупок. Отчёт сформирован автоматически по данным учёта клиента; все расчёты воспроизводимы.</footer>
+</div>
+</body>
+</html>

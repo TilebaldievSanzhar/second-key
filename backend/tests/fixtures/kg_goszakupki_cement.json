@@ -1,0 +1,89 @@
+{
+ "meta": {
+  "id": "6ac5dbff0419526d2d576be2",
+  "number": "202610072432144337",
+  "dateContest": "2026-10-12T14:00:00",
+  "datePublished": "2026-10-07T11:58:31",
+  "status": "PROTOCOL_OPENED",
+  "ate": {
+   "name": "Сузакский район"
+  },
+  "type": "PRODUCT"
+ },
+ "tender": {
+  "id": "6ac5dbff0419526d2d576be2",
+  "companyName": "Сузакский айыл Окмоту, Сузакского айылного аймака",
+  "dateContest": "2026-10-12 14:00",
+  "status": "PROTOCOL_OPENED",
+  "lots": [
+   {
+    "products": [
+     {
+      "id": "a49104c1b8dc44e398ee6e7bb6b0862a",
+      "count": 50,
+      "price": 8500,
+      "specifications": "Цемент м-400",
+      "planningDetail": {
+       "okgz": {
+        "id": "441112",
+        "codeName": "44111200-3",
+        "name": "Цемент "
+       },
+       "measurementUnit": {
+        "shortNameRU": "т"
+       },
+       "amount": 50,
+       "priceForOneUnit": 8500
+      }
+     }
+    ]
+   }
+  ]
+ },
+ "submissions": [
+  {
+   "companyName": "ИП Акболушев Эрнис Режевалиевич\t",
+   "lots": [
+    {
+     "products": [
+      {
+       "priceOfUnit": 7990,
+       "product": {
+        "id": "a49104c1b8dc44e398ee6e7bb6b0862a"
+       },
+       "countryOfOrigin": {
+        "id": 8,
+        "title": "Кыргызстан",
+        "isoCode": "417",
+        "alpha3Code": null,
+        "sorting": 0
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "companyName": "Темирбаева Махабат Сапарбековна",
+   "lots": [
+    {
+     "products": [
+      {
+       "priceOfUnit": 8200,
+       "product": {
+        "id": "a49104c1b8dc44e398ee6e7bb6b0862a"
+       },
+       "countryOfOrigin": {
+        "id": 8,
+        "title": "Кыргызстан",
+        "isoCode": "417",
+        "alpha3Code": null,
+        "sorting": 0
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
