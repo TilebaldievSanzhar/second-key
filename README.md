@@ -5,7 +5,7 @@
 
 - Продукт: [docs/product/STRATEGY.md](docs/product/STRATEGY.md), план: [docs/product/PLAN.md](docs/product/PLAN.md)
 - Архитектура: [docs/architecture.md](docs/architecture.md), решения: [docs/adr/](docs/adr/)
-- ТЗ на интерфейс для Claude Design: [docs/design/FRONTEND_SPEC.md](docs/design/FRONTEND_SPEC.md)
+- Интерфейс: ТЗ [docs/design/FRONTEND_SPEC.md](docs/design/FRONTEND_SPEC.md), макет и отличия реализации — [docs/design/README.md](docs/design/README.md)
 
 ## Состав
 
