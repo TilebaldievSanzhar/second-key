@@ -179,6 +179,7 @@ class Finding(IdMixin, CreatedMixin, Base):
     evidence: Mapped[dict[str, Any]] = mapped_column(default=dict)
     status: Mapped[FindingStatus] = mapped_column(_enum(FindingStatus), default=FindingStatus.open)
     answer: Mapped[str | None] = mapped_column(Text)
+    answer_reasons: Mapped[list[Any]] = mapped_column(default=list)  # быстрые причины: «Срочная поставка»…
     answered_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     answered_at: Mapped[datetime | None] = mapped_column()
     decision_note: Mapped[str | None] = mapped_column(Text)

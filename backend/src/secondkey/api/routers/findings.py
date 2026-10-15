@@ -107,6 +107,7 @@ async def answer(
     if f.status in DECIDED:
         raise HTTPException(status.HTTP_409_CONFLICT, "Решение по вопросу уже принято — сначала верните его в работу")
     f.answer, f.answered_by, f.answered_at = body.answer.strip(), member.user.id, datetime.now(UTC)
+    f.answer_reasons = list(dict.fromkeys(body.reasons))
     f.status = FindingStatus.answered
     await session.flush()
     return _out(f)

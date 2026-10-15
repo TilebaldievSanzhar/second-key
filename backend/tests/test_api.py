@@ -49,6 +49,7 @@ async def done_run(app, org, registry_xlsx) -> dict:
         assert r.status_code == 201, r.text
         up = r.json()
         assert up["preview"]["missing"] == [] and up["preview"]["header_row"] == 5
+        assert up["preview"]["data_rows"] > 1000
         r = await c.post("/api/audits", json={"upload_id": up["id"]})
         assert r.status_code == 202, r.text
         return r.json()
@@ -119,7 +120,13 @@ async def test_two_keys(done_run, as_user):
 
     f = next(f for f in mine["items"] if Decimal(f["overpayment"]) > 0)
     # ключ 1: снабжение объясняет
-    r = await buyer.post(f"/api/findings/{f['id']}/answer", json={"answer": "Срочная поставка на объект, склад пуст"})
+    r = await buyer.post(
+        f"/api/findings/{f['id']}/answer",
+        json={"answer": "Склад пуст, заливка плиты", "reasons": ["Срочная поставка", "Доставка включена в цену"]},
+    )
+    assert r.json()["answer_reasons"] == ["Срочная поставка", "Доставка включена в цену"]
+    bad = await buyer.post(f"/api/findings/{f['id']}/answer", json={"answer": "текст", "reasons": ["Выдуманная"]})
+    assert bad.status_code == 422
     assert r.status_code == 200 and r.json()["status"] == "answered"
     # решение — не дело снабжения
     r = await buyer.post(f"/api/findings/{f['id']}/decision", json={"status": "justified"})

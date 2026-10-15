@@ -8,7 +8,7 @@ from decimal import Decimal
 import openpyxl
 import pytest
 
-from secondkey.engine.importer import import_registry, map_columns, parse_date
+from secondkey.engine.importer import import_registry, map_columns, missing_fields, parse_date
 from secondkey.engine.models import PurchaseLine
 from secondkey.engine.normalize import normalize, normalize_line
 from secondkey.engine.pipeline import audit_lines
@@ -268,3 +268,10 @@ def test_no_double_counting_across_rules():
     assert len([v for v in per_rule if v > 0]) == 2  # P-01 и P-03
     assert res.line_overpayment["b"] == max(per_rule)  # в итог — максимум, не сумма
     assert run_all(normalize(lines), AuditConfig()) is not None
+
+
+def test_missing_fields_needs_price_or_amount():
+    base = {"date": 0, "supplier": 1, "item": 2, "qty": 3}
+    assert missing_fields(base) == ["price"]
+    assert missing_fields({**base, "amount": 4}) == []
+    assert missing_fields({"date": 0}) == ["supplier", "item", "qty", "price"]

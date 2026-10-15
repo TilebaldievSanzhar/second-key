@@ -37,6 +37,15 @@ FIELD_SYNONYMS: list[tuple[str, tuple[str, ...]]] = [
 ]
 REQUIRED = ("date", "supplier", "item", "qty")
 
+
+def missing_fields(mapping: dict[str, int]) -> list[str]:
+    """Обязательные поля без колонки; цена считается и из суммы, поэтому нужна хотя бы одна из двух."""
+    missing = [f for f in REQUIRED if f not in mapping]
+    if "price" not in mapping and "amount" not in mapping:
+        missing.append("price")
+    return missing
+
+
 _DATE_RE = re.compile(r"(\d{1,2})[./](\d{1,2})[./](\d{2,4})|(\d{4})-(\d{2})-(\d{2})")
 
 
@@ -148,6 +157,7 @@ class Preview:
     mapping: dict[str, int]
     sample: list[list[str]]
     missing: list[str]  # обязательные поля, которые не нашлись
+    data_rows: int = 0  # непустых строк под шапкой
 
 
 def preview_registry(path: str | Path, sample_rows: int = 8) -> Preview:
@@ -159,8 +169,9 @@ def preview_registry(path: str | Path, sample_rows: int = 8) -> Preview:
             header_row=0,
             columns=[],
             mapping={},
-            missing=list(REQUIRED),
+            missing=missing_fields({}),
             sample=[[_cell_str(c) for c in r] for r in rows[:sample_rows]],
+            data_rows=sum(1 for r in rows if any(r)),
         )
     idx, mapping = found
     return Preview(
@@ -168,7 +179,8 @@ def preview_registry(path: str | Path, sample_rows: int = 8) -> Preview:
         columns=[_cell_str(c) for c in rows[idx]],
         mapping=mapping,
         sample=[[_cell_str(c) for c in r] for r in rows[idx + 1 : idx + 1 + sample_rows] if any(r)],
-        missing=[f for f in REQUIRED if f not in mapping],
+        missing=missing_fields(mapping),
+        data_rows=sum(1 for r in rows[idx + 1 :] if any(r)),
     )
 
 
@@ -189,7 +201,7 @@ def import_registry(
     path = Path(path)
     rows = _read_rows(path)
     if mapping is not None and header_row:
-        missing = [f for f in REQUIRED if f not in mapping]
+        missing = missing_fields(mapping)
         if missing:
             raise ValueError(f"в сопоставлении нет обязательных полей: {', '.join(missing)}")
         hdr_idx = header_row - 1

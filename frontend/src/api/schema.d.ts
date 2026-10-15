@@ -420,6 +420,11 @@ export interface components {
         AnswerIn: {
             /** Answer */
             answer: string;
+            /**
+             * Reasons
+             * @default []
+             */
+            reasons: ("Срочная поставка" | "Доставка включена в цену" | "Другая марка или качество" | "Отсрочка платежа" | "Ошибка в учёте" | "Другое")[];
         };
         /** Body_upload_api_uploads_post */
         Body_upload_api_uploads_post: {
@@ -528,12 +533,22 @@ export interface components {
             status: components["schemas"]["FindingStatus"];
             /** Answer */
             answer: string | null;
+            /**
+             * Answer Reasons
+             * @default []
+             */
+            answer_reasons: string[];
             /** Answered At */
             answered_at: string | null;
             /** Decision Note */
             decision_note: string | null;
             /** Decided At */
             decided_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
             /**
              * Lines Count
              * @default 0
@@ -586,6 +601,8 @@ export interface components {
             sku_label: string | null;
             /** Unit Base */
             unit_base: string | null;
+            /** Qty Base */
+            qty_base: string | null;
             /** Price Base */
             price_base: string | null;
             /** Norm Status */
@@ -634,12 +651,22 @@ export interface components {
             status: components["schemas"]["FindingStatus"];
             /** Answer */
             answer: string | null;
+            /**
+             * Answer Reasons
+             * @default []
+             */
+            answer_reasons: string[];
             /** Answered At */
             answered_at: string | null;
             /** Decision Note */
             decision_note: string | null;
             /** Decided At */
             decided_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
             /**
              * Lines Count
              * @default 0
@@ -694,6 +721,8 @@ export interface components {
             sku_label: string | null;
             /** Unit Base */
             unit_base: string | null;
+            /** Qty Base */
+            qty_base: string | null;
             /** Price Base */
             price_base: string | null;
             /** Norm Status */
@@ -860,6 +889,11 @@ export interface components {
             sample: string[][];
             /** Missing */
             missing: string[];
+            /**
+             * Data Rows
+             * @default 0
+             */
+            data_rows: number;
         };
         /** PriceHistory */
         PriceHistory: {

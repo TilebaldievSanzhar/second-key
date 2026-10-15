@@ -1569,6 +1569,23 @@
             "maxLength": 4000,
             "minLength": 3,
             "title": "Answer"
+          },
+          "reasons": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "Срочная поставка",
+                "Доставка включена в цену",
+                "Другая марка или качество",
+                "Отсрочка платежа",
+                "Ошибка в учёте",
+                "Другое"
+              ]
+            },
+            "type": "array",
+            "maxItems": 6,
+            "title": "Reasons",
+            "default": []
           }
         },
         "type": "object",
@@ -1812,6 +1829,14 @@
             ],
             "title": "Answer"
           },
+          "answer_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Answer Reasons",
+            "default": []
+          },
           "answered_at": {
             "anyOf": [
               {
@@ -1846,6 +1871,11 @@
               }
             ],
             "title": "Decided At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
           },
           "lines_count": {
             "type": "integer",
@@ -1905,6 +1935,7 @@
           "answered_at",
           "decision_note",
           "decided_at",
+          "created_at",
           "evidence",
           "lines"
         ],
@@ -2030,6 +2061,17 @@
             ],
             "title": "Unit Base"
           },
+          "qty_base": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qty Base"
+          },
           "price_base": {
             "anyOf": [
               {
@@ -2082,6 +2124,7 @@
           "sku",
           "sku_label",
           "unit_base",
+          "qty_base",
           "price_base",
           "norm_status",
           "norm_note",
@@ -2202,6 +2245,14 @@
             ],
             "title": "Answer"
           },
+          "answer_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Answer Reasons",
+            "default": []
+          },
           "answered_at": {
             "anyOf": [
               {
@@ -2237,6 +2288,11 @@
             ],
             "title": "Decided At"
           },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
           "lines_count": {
             "type": "integer",
             "title": "Lines Count",
@@ -2262,7 +2318,8 @@
           "answer",
           "answered_at",
           "decision_note",
-          "decided_at"
+          "decided_at",
+          "created_at"
         ],
         "title": "FindingOut"
       },
@@ -2410,6 +2467,17 @@
             ],
             "title": "Unit Base"
           },
+          "qty_base": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qty Base"
+          },
           "price_base": {
             "anyOf": [
               {
@@ -2458,6 +2526,7 @@
           "sku",
           "sku_label",
           "unit_base",
+          "qty_base",
           "price_base",
           "norm_status",
           "norm_note",
@@ -2898,6 +2967,11 @@
             },
             "type": "array",
             "title": "Missing"
+          },
+          "data_rows": {
+            "type": "integer",
+            "title": "Data Rows",
+            "default": 0
           }
         },
         "type": "object",

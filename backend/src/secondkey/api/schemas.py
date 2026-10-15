@@ -94,6 +94,7 @@ class PreviewOut(BaseModel):
     mapping: dict[str, int]
     sample: list[list[str]]
     missing: list[str]
+    data_rows: int = 0
 
 
 class UploadOut(Out):
@@ -180,9 +181,11 @@ class FindingOut(Out):
     overpayment: Decimal
     status: FindingStatus
     answer: str | None
+    answer_reasons: list[str] = []
     answered_at: datetime | None
     decision_note: str | None
     decided_at: datetime | None
+    created_at: datetime
     lines_count: int = 0
 
 
@@ -202,6 +205,7 @@ class LineOut(Out):
     sku: str | None
     sku_label: str | None
     unit_base: str | None
+    qty_base: Decimal | None
     price_base: Decimal | None
     norm_status: str
     norm_note: str | None
@@ -224,8 +228,19 @@ class FindingDetail(FindingOut):
     decided_by: PersonRef | None = None
 
 
+ANSWER_REASONS = (
+    "Срочная поставка",
+    "Доставка включена в цену",
+    "Другая марка или качество",
+    "Отсрочка платежа",
+    "Ошибка в учёте",
+    "Другое",
+)
+
+
 class AnswerIn(BaseModel):
     answer: str = Field(min_length=3, max_length=4000)
+    reasons: list[Literal[ANSWER_REASONS]] = Field(default=[], max_length=len(ANSWER_REASONS))  # type: ignore[valid-type]
 
 
 class DecisionIn(BaseModel):
