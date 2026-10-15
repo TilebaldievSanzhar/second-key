@@ -1,0 +1,70 @@
+# Dev-режим (подхватывается автоматически): исходники смонтированы, hot reload, порты наружу.
+services:
+  db:
+    ports: ["127.0.0.1:5432:5432"]
+
+  redis:
+    ports: ["127.0.0.1:6379:6379"]
+
+  s3:
+    ports:
+      - "127.0.0.1:9000:9000"   # S3 API
+      - "127.0.0.1:9001:9001"   # консоль RustFS: http://localhost:9001
+
+  migrate:
+    build:
+      context: ./backend
+      target: dev
+    image: second-key-backend:dev
+    volumes: &backend-src
+      - ./backend:/app
+      - /app/.venv              # прячем .venv хоста (Windows); в контейнере свой venv в /opt/venv
+
+  api:
+    build:
+      context: ./backend
+      target: dev
+    image: second-key-backend:dev
+    environment:
+      SK_ENV: dev
+      SK_CORS_ORIGINS: '["http://localhost:5173"]'
+      WATCHFILES_FORCE_POLLING: "true"   # Docker Desktop на Windows/macOS не пробрасывает inotify из bind mount
+    ports: ["127.0.0.1:8000:8000"]
+    volumes: *backend-src
+
+  worker:
+    build:
+      context: ./backend
+      target: dev
+    image: second-key-backend:dev
+    environment:
+      WATCHFILES_FORCE_POLLING: "true"
+    # перезапуск воркера при изменении кода: watchfiles умеет polling (taskiq --reload — только inotify)
+    command: ["watchfiles", "--filter", "python",
+              "taskiq worker secondkey.worker.broker:broker secondkey.worker.tasks --workers 1", "src"]
+    volumes:
+      - ./backend:/app
+      - /app/.venv
+      - marketcache:/app/var/cache
+
+  scheduler:
+    build:
+      context: ./backend
+      target: dev
+    image: second-key-backend:dev
+    volumes: *backend-src
+
+  web:
+    build:
+      context: ./frontend
+      target: dev
+    image: second-key-web:dev
+    environment:
+      VITE_API_PROXY: http://api:8000
+      CHOKIDAR_USEPOLLING: "true"
+    ports: ["127.0.0.1:5173:5173"]
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules        # node_modules образа (Linux), не хоста
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:5173/"]

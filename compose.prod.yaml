@@ -1,0 +1,36 @@
+# Прод на одном хосте: без hot reload и dev-портов, наружу только web (nginx: статика + /api).
+# docker compose -f compose.yaml -f compose.prod.yaml up -d --build
+# TLS — на внешнем балансировщике/обратном прокси; SK_COOKIE_SECURE=true обязателен.
+x-prod-env: &prod-env
+  SK_ENV: prod
+  SK_LOG_JSON: "true"
+  SK_COOKIE_SECURE: ${SK_COOKIE_SECURE:-true}
+  SK_CORS_ORIGINS: ${SK_CORS_ORIGINS:-[]}
+
+services:
+  migrate:
+    environment: *prod-env
+  api:
+    environment: *prod-env
+    deploy:
+      resources:
+        limits: {cpus: "2", memory: 1g}
+    restart: always
+  worker:
+    environment: *prod-env
+    deploy:
+      resources:
+        limits: {cpus: "2", memory: 2g}
+    restart: always
+  scheduler:
+    environment: *prod-env
+    restart: always
+  db:
+    restart: always
+  redis:
+    restart: always
+  s3:
+    restart: always
+  web:
+    ports: ["${SK_HTTP_PORT:-8080}:8080"]
+    restart: always

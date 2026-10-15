@@ -1,0 +1,146 @@
+# Базовый стек. Dev: `docker compose up` (подхватывает compose.override.yaml — hot reload, порты наружу).
+# Прод (один хост): `docker compose -f compose.yaml -f compose.prod.yaml up -d`.
+# Секреты — только в .env (см. .env.example); без них compose не стартует.
+name: second-key
+
+x-backend: &backend
+  image: second-key-backend:${SK_VERSION:-local}
+  build:
+    context: ./backend
+    target: runtime
+  env_file:
+    - path: .env
+      required: false
+  environment: &backend-env
+    SK_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-secondkey}:${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}@db:5432/${POSTGRES_DB:-secondkey}
+    SK_REDIS_URL: redis://redis:6379/0
+    SK_STORAGE_BACKEND: s3
+    SK_S3_ENDPOINT_URL: http://s3:9000
+    SK_S3_BUCKET: ${S3_BUCKET:-secondkey}
+    SK_S3_ACCESS_KEY: ${S3_ACCESS_KEY:-secondkey}
+    SK_S3_SECRET_KEY: ${S3_SECRET_KEY:?задайте S3_SECRET_KEY в .env}
+    SK_JWT_SECRET: ${SK_JWT_SECRET:?задайте SK_JWT_SECRET в .env}
+    SK_MARKET_CACHE_DIR: /app/var/cache/kg_goszakupki
+  restart: unless-stopped
+
+x-depends-infra: &depends-infra
+  db:
+    condition: service_healthy
+  redis:
+    condition: service_healthy
+  s3:
+    condition: service_healthy
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-secondkey}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}
+      POSTGRES_DB: ${POSTGRES_DB:-secondkey}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4-alpine
+    # AOF: очередь задач (Redis Streams) переживает перезапуск
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # S3-совместимое хранилище выгрузок и отчётов (RustFS, Apache-2.0); в проде можно указать внешний S3
+  s3:
+    image: rustfs/rustfs:1.0.0
+    environment:
+      RUSTFS_ACCESS_KEY: ${S3_ACCESS_KEY:-secondkey}
+      RUSTFS_SECRET_KEY: ${S3_SECRET_KEY:?задайте S3_SECRET_KEY в .env}
+      RUSTFS_CONSOLE_ENABLE: "true"
+    volumes:
+      - s3data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # миграции схемы — один раз перед стартом api/worker
+  migrate:
+    <<: *backend
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+    healthcheck:
+      disable: true
+
+  api:
+    <<: *backend
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health/live', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      <<: *depends-infra
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    <<: *backend
+    command: ["taskiq", "worker", "secondkey.worker.broker:broker", "secondkey.worker.tasks",
+              "--workers", "2", "--max-async-tasks", "8", "--wait-tasks-timeout", "60"]
+    volumes:
+      - marketcache:/app/var/cache
+    depends_on:
+      <<: *depends-infra
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      disable: true
+    stop_grace_period: 70s
+
+  # расписание: курсы НБКР ежедневно, эталон рынка еженедельно — ставит задачи в очередь
+  scheduler:
+    <<: *backend
+    command: ["taskiq", "scheduler", "secondkey.worker.broker:scheduler", "secondkey.worker.tasks"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+
+  web:
+    image: second-key-web:${SK_VERSION:-local}
+    build:
+      context: ./frontend
+      target: runtime
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
+  s3data:
+  marketcache:
