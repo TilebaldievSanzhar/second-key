@@ -1,0 +1,30 @@
+# секреты и локальное окружение
+.env
+.env.*
+!.env.example
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# node
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# данные и артефакты прогонов
+backend/var/
+*.log
+
+# IDE и ОС
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
