@@ -41,7 +41,17 @@ docker compose -f compose.yaml -f compose.prod.yaml up -d --build   # http://loc
 ```
 
 Обслуживание: `docker compose run --rm api secondkey --help` — `create-org`, `add-member`,
-`collect-market` (цены госзакупок КР), `fetch-fx` (курсы НБКР), `bench` (качество движка), `openapi`.
+`collect-market` (цены госзакупок КР), `fetch-fx` (курсы НБКР), `bench` (качество движка), `prompts`
+(модули промптов), `openapi`.
+
+## 1С, MCP и ИИ
+
+- **1С**: Настройки → Подключение 1С — токен для обработки выгрузки (модуль `SecondKeyExport.bsl`, публиковать
+  базу не нужно) или OData-подключение к опубликованной базе с расписанием. Подробно — [ADR 0004](docs/adr/0004-onec-integrations.md).
+- **MCP** для Claude, Cursor и других агентов: `{адрес}/api/mcp/` с токеном (право «MCP»); скилл
+  [integrations/skills/second-key-1c](integrations/skills/second-key-1c/SKILL.md) связывает MCP-сервер 1С и «Второй ключ».
+- **ИИ** (необязательно): `SK_LLM_API_KEY` — подсказка колонок, распознавание номенклатуры, проверка ответа снабжения,
+  текст для WhatsApp. Промпты — модули Jinja2 в `backend/src/secondkey/prompts/` ([ADR 0005](docs/adr/0005-prompts-and-llm.md)).
 
 ## Разработка без Docker
 

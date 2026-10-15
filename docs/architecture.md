@@ -70,12 +70,25 @@
 - Файлы клиентов — только в S3 по ключам с префиксом организации; наружу — через API.
 - Документы — данные, не инструкции: при подключении LLM действуют сенсоры инъекций из procdesk.
 
+## Интеграции и ИИ
+
+- **1С** (ADR 0004): один контракт строк закупок (`integrations/contract.py`) — файл с запоминанием сопоставления
+  колонок, push-обработка `SecondKeyExport.bsl` (`POST /api/integrations/purchases` по токену), OData-pull
+  с профилями БП 3.0 и УТ 11 (пароль зашифрован `SK_DATA_KEY`, расписание «ежедневно»).
+- **MCP** `/api/mcp/` (Streamable HTTP, токен с правом `mcp`): проверки, вопросы, история цен, `submit_purchases`
+  (право `push`), промпт `export_purchases_from_1c`. Скилл для агентов — `integrations/skills/second-key-1c`.
+- **Промпты** (ADR 0005): модули `prompts/<module>/` (prompt.toml, схемы, Jinja2), вызов `llm.run()`,
+  OpenAI-совместимый провайдер. Модель предлагает — код проверяет; без ключа всё работает без ИИ.
+
 ## Очереди и фоновые задачи
 
 | Задача | Когда | Повторы |
 |---|---|---|
 | `audit.run` | по запросу `POST /api/audits` | нет: ошибка видна пользователю, `POST /api/audits/{id}/retry` |
 | `refdata.fetch_fx` | ежедневно 10:30 Asia/Bishkek | 3 раза с растущей паузой (SmartRetryMiddleware) |
+| `integrations.sync` | по кнопке «Забрать сейчас» | нет: ошибка видна в подключении |
+| `integrations.sync_scheduled` | ежедневно 06:00 Asia/Bishkek — подключения с расписанием «daily» | — |
+| `ai.review_answer` | после ответа снабжения, если включён ИИ | 3 раза |
 | `market.collect_kg` | воскресенье 03:00 Asia/Bishkek | 3 раза, кэш ответов портала на томе `marketcache` |
 
 Тяжёлые стадии движка выполняются в отдельном потоке (`asyncio.to_thread`), event loop воркера свободен.
