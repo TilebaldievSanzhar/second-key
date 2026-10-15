@@ -609,7 +609,7 @@ function Lines({ lines, unit, total, file, signal }: { lines: FindingLine[]; uni
                 <td className="r num">
                   {qty(l.qty_base ?? l.qty)} {u}
                 </td>
-                <td className="r num">{price(l.price_base ?? l.price)}</td>
+                <td className="r num" title={price(l.price_base ?? l.price)}>{int(l.price_base ?? l.price)}</td>
                 {!signal && <td className="r num over">{plus(l.finding_overpayment)}</td>}
               </tr>
             ))}
