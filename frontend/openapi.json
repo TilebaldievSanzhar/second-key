@@ -1603,15 +1603,30 @@
           },
           "spend": {
             "type": "string",
-            "title": "Spend"
+            "title": "Spend",
+            "description": "Оборот разреза, сом (для правил — 0)"
           },
           "overpayment": {
             "type": "string",
-            "title": "Overpayment"
+            "title": "Overpayment",
+            "description": "Возможная переплата без двойного счёта, сом"
           },
           "lines": {
             "type": "integer",
-            "title": "Lines"
+            "title": "Lines",
+            "description": "Строк учёта с переплатой"
+          },
+          "findings": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Findings",
+            "description": "Вопросов по правилу (только в разрезе по правилам)"
           }
         },
         "type": "object",

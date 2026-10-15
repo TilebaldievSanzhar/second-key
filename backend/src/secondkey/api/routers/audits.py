@@ -200,11 +200,18 @@ async def summary(run_id: uuid.UUID, session: Session, member: Member = require(
     ).all():
         count_by_code[code] = n
     money_by_code: dict[str, Decimal] = defaultdict(Decimal)
+    lines_by_code: dict[str, int] = defaultdict(int)
     for v, code in best.values():
         money_by_code[code] += v
+        lines_by_code[code] += 1
     by_rule = [
         BreakdownRow(
-            key=c, label=RULE_TITLES.get(c, c), spend=Decimal("0"), overpayment=money_by_code[c], lines=count_by_code[c]
+            key=c,
+            label=RULE_TITLES.get(c, c),
+            spend=Decimal("0"),
+            overpayment=money_by_code[c],
+            lines=lines_by_code[c],
+            findings=count_by_code[c],
         )
         for c in sorted(count_by_code)
     ]

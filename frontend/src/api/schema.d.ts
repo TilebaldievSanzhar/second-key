@@ -432,12 +432,26 @@ export interface components {
             key: string;
             /** Label */
             label: string;
-            /** Spend */
+            /**
+             * Spend
+             * @description Оборот разреза, сом (для правил — 0)
+             */
             spend: string;
-            /** Overpayment */
+            /**
+             * Overpayment
+             * @description Возможная переплата без двойного счёта, сом
+             */
             overpayment: string;
-            /** Lines */
+            /**
+             * Lines
+             * @description Строк учёта с переплатой
+             */
             lines: number;
+            /**
+             * Findings
+             * @description Вопросов по правилу (только в разрезе по правилам)
+             */
+            findings?: number | null;
         };
         /** DecisionIn */
         DecisionIn: {

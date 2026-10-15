@@ -80,6 +80,7 @@ async def test_run_completes(done_run, as_user):
     assert run["progress"] == 100 and run["lines_total"] > 1000
     assert Decimal(run["overpayment"]) > 0 and run["findings_count"] > 10
     assert run["period_start"] == "2025-10-01" and run["market_points"] > 0
+    assert run["created_at"] <= run["started_at"] <= run["finished_at"]
 
     listing = (await owner.get("/api/audits")).json()
     assert listing["total"] == 1 and listing["items"][0]["id"] == run["id"]
@@ -96,6 +97,10 @@ async def test_summary_has_no_double_counting(done_run, as_user):
     by_rule = sum(Decimal(r["overpayment"]) for r in s["by_rule"])
     assert abs(by_rule - Decimal(s["run"]["overpayment"])) < 1
     assert {"P-01", "P-03", "P-05"} <= {r["key"] for r in s["by_rule"]}
+    assert sum(r["findings"] for r in s["by_rule"]) == s["run"]["findings_count"]
+    # каждая строка с переплатой отнесена ровно к одному правилу
+    flagged = (await owner.get(f"/api/audits/{done_run['id']}/lines", params={"flagged": True, "limit": 1})).json()
+    assert sum(r["lines"] for r in s["by_rule"]) == flagged["total"]
     assert s["by_supplier"] and s["by_responsible"] and s["by_material"]
     assert s["findings"]["open"] == s["run"]["findings_count"]
 

@@ -137,9 +137,10 @@ class RunOut(Out):
 class BreakdownRow(BaseModel):
     key: str
     label: str
-    spend: Decimal
-    overpayment: Decimal
-    lines: int
+    spend: Decimal = Field(description="Оборот разреза, сом (для правил — 0)")
+    overpayment: Decimal = Field(description="Возможная переплата без двойного счёта, сом")
+    lines: int = Field(description="Строк учёта с переплатой")
+    findings: int | None = Field(default=None, description="Вопросов по правилу (только в разрезе по правилам)")
 
 
 class FindingCounts(BaseModel):

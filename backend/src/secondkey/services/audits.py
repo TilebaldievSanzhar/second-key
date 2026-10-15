@@ -13,12 +13,11 @@ import tempfile
 import uuid
 from collections import Counter
 from dataclasses import asdict
-from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import delete, insert, select
+from sqlalchemy import delete, func, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from secondkey.db.models import (
@@ -144,6 +143,7 @@ async def create_run(
 
 
 async def _set_stage(run_id: uuid.UUID, status: RunStatus, progress_pct: int, **fields: Any) -> None:
+    # отметки времени — func.now(): часы БД, а не контейнера воркера (часы контейнеров расходятся)
     async with session_scope() as s:
         run = await s.get(AuditRun, run_id)
         if run is None:
@@ -191,7 +191,7 @@ async def execute_run(run_id: uuid.UUID) -> None:
         company = org.name if org else "Компания"
 
     try:
-        await _set_stage(run_id, RunStatus.importing, 5, started_at=datetime.now(UTC), error=None)
+        await _set_stage(run_id, RunStatus.importing, 5, started_at=func.now(), error=None)
         data = await get_storage().get(upload.storage_key)
         cols = (mapping or {}).get("columns")
         hdr = (mapping or {}).get("header_row")
@@ -219,7 +219,7 @@ async def execute_run(run_id: uuid.UUID) -> None:
             run = await s.get(AuditRun, run_id)
             report_key = f"org/{run.org_id}/runs/{run_id}/report.html"
         await get_storage().put(report_key, html.encode("utf-8"), "text/html; charset=utf-8")
-        await _set_stage(run_id, RunStatus.done, 100, report_key=report_key, finished_at=datetime.now(UTC))
+        await _set_stage(run_id, RunStatus.done, 100, report_key=report_key, finished_at=func.now())
         log.info(
             "audit.done",
             run_id=str(run_id),
@@ -228,14 +228,14 @@ async def execute_run(run_id: uuid.UUID) -> None:
             overpayment=str(result.total_overpayment),
         )
     except UserFacingError as exc:
-        await _set_stage(run_id, RunStatus.failed, 100, error=str(exc), finished_at=datetime.now(UTC))
+        await _set_stage(run_id, RunStatus.failed, 100, error=str(exc), finished_at=func.now())
     except Exception as exc:
         log.exception("audit.failed", run_id=str(run_id))
         await _set_stage(
             run_id,
             RunStatus.failed,
             100,
-            finished_at=datetime.now(UTC),
+            finished_at=func.now(),
             error="Внутренняя ошибка при обработке. Мы уже видим её в журнале; попробуйте запустить ещё раз.",
         )
         raise exc
