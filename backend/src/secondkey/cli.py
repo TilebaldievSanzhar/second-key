@@ -190,6 +190,30 @@ def bench(
         raise typer.Exit(1)
 
 
+@app.command("prompts")
+def prompts_cmd(
+    module: Annotated[str | None, typer.Argument(help="Модуль: показать отрендеренный промпт по примеру входа")] = None,
+    example: Annotated[Path | None, typer.Option(help="JSON с входом модуля (поля Inputs)")] = None,
+) -> None:
+    """Модули промптов: список с версиями или рендер одного по JSON-входу — для отладки формулировок."""
+    from secondkey import prompts
+
+    if module is None:
+        for name in prompts.modules():
+            spec = prompts.get(name).spec
+            typer.echo(f"{name:<16} v{spec.version:<5} {spec.tier:<6} {spec.description}")
+        return
+    pm = prompts.get(module)
+    if example is None:
+        typer.echo(json.dumps(pm.inputs.model_json_schema(), ensure_ascii=False, indent=2))
+        return
+    rendered = prompts.render(module, pm.inputs.model_validate_json(example.read_text(encoding="utf-8")))
+    typer.echo(f"--- system ({module} v{pm.spec.version}) ---")
+    typer.echo(rendered.system)
+    typer.echo("--- user ---")
+    typer.echo(rendered.user)
+
+
 @app.command("openapi")
 def openapi(out: Annotated[Path | None, typer.Option(help="Файл; по умолчанию stdout")] = None) -> None:
     """Схема OpenAPI без запуска сервера — для генерации TS-типов фронта."""

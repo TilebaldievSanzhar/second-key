@@ -11,7 +11,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from secondkey import __version__
+from secondkey import __version__, mcp_server
 from secondkey.api.routers import audits, auth, findings, health, integrations, org, uploads
 from secondkey.config import settings
 from secondkey.db.session import dispose_engine
@@ -30,7 +30,8 @@ async def lifespan(app: FastAPI):
     except Exception as exc:  # API поднимается и без хранилища: /health/ready покажет проблему
         log.warning("storage.not_ready", error=str(exc))
     log.info("api.startup", env=settings.env, version=__version__)
-    yield
+    async with app.state.mcp.session_manager.run():  # MCP: /api/mcp
+        yield
     if not broker.is_worker_process:
         await broker.shutdown()
     await dispose_engine()
@@ -91,6 +92,7 @@ def create_app() -> FastAPI:
         integrations.router,
     ):
         app.include_router(r, prefix="/api")
+    mcp_server.mount(app)
     return app
 
 

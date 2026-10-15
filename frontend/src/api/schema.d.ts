@@ -318,6 +318,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/audits/{run_id}/digest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Digest
+         * @description Текст собственнику для WhatsApp: prompts/owner_digest, при сбое или без ИИ — шаблон.
+         */
+        get: operations["digest_api_audits__run_id__digest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/findings": {
         parameters: {
             query?: never;
@@ -412,6 +432,194 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/integrations/tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Tokens */
+        get: operations["list_tokens_api_integrations_tokens_get"];
+        put?: never;
+        /** Create Token */
+        post: operations["create_token_api_integrations_tokens_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations/tokens/{token_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke Token */
+        delete: operations["revoke_token_api_integrations_tokens__token_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations/ping": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ping
+         * @description Проверка связи из 1С: токен действителен.
+         */
+        get: operations["ping_api_integrations_ping_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations/purchases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit
+         * @description Строки закупок из 1С (обработка «Второй ключ: выгрузка закупок») или скрипта → проверка в очереди.
+         */
+        post: operations["submit_api_integrations_purchases_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Connections */
+        get: operations["list_connections_api_integrations_connections_get"];
+        put?: never;
+        /** Create Connection */
+        post: operations["create_connection_api_integrations_connections_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations/connections/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Connection
+         * @description Проверка до сохранения; без пароля — с паролем сохранённого подключения connection_id.
+         */
+        post: operations["test_connection_api_integrations_connections_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations/connections/{connection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Connection */
+        delete: operations["delete_connection_api_integrations_connections__connection_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Connection */
+        patch: operations["update_connection_api_integrations_connections__connection_id__patch"];
+        trace?: never;
+    };
+    "/api/integrations/connections/{connection_id}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync
+         * @description Забрать строки из 1С сейчас (в фоне); итог — в подключении и в списке проверок.
+         */
+        post: operations["sync_api_integrations_connections__connection_id__sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations/profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Profiles */
+        get: operations["profiles_api_integrations_profiles_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations/1c/module.bsl": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Onec Module
+         * @description Модуль внешней обработки 1С «Второй ключ: выгрузка закупок» — исходный текст для вставки в обработку.
+         */
+        get: operations["onec_module_api_integrations_1c_module_bsl_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -458,6 +666,85 @@ export interface components {
              */
             findings?: number | null;
         };
+        /** ConnectionIn */
+        ConnectionIn: {
+            /** Name */
+            name: string;
+            /**
+             * Base Url
+             * @description Адрес публикации базы, напр. https://1c.example.kg/bp
+             */
+            base_url: string;
+            /** Username */
+            username: string;
+            /**
+             * Password
+             * @description Пустой — оставить сохранённый
+             */
+            password?: string | null;
+            /**
+             * Profile
+             * @default bp30
+             * @enum {string}
+             */
+            profile: "bp30" | "ut11";
+            /**
+             * Period Days
+             * @default 90
+             */
+            period_days: number;
+            /**
+             * Schedule
+             * @default manual
+             * @enum {string}
+             */
+            schedule: "manual" | "daily";
+        };
+        /** ConnectionOut */
+        ConnectionOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Base Url */
+            base_url: string | null;
+            /** Username */
+            username: string | null;
+            /** Profile */
+            profile: string | null;
+            /** Period Days */
+            period_days: number;
+            /** Schedule */
+            schedule: string;
+            /** Has Password */
+            has_password: boolean;
+            /** Last Sync At */
+            last_sync_at: string | null;
+            /** Last Status */
+            last_status: string | null;
+            /** Last Error */
+            last_error: string | null;
+            /** Last Run Id */
+            last_run_id: string | null;
+        };
+        /** ConnectionTestOut */
+        ConnectionTestOut: {
+            /** Ok */
+            ok: boolean;
+            /** Profile */
+            profile?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Error */
+            error?: string | null;
+        };
         /** DecisionIn */
         DecisionIn: {
             /**
@@ -467,6 +754,16 @@ export interface components {
             status: "confirmed" | "justified" | "data_error";
             /** Note */
             note?: string | null;
+        };
+        /** DigestOut */
+        DigestOut: {
+            /** Text */
+            text: string;
+            /**
+             * By
+             * @enum {string}
+             */
+            by: "ai" | "template";
         };
         /** FindingCounts */
         FindingCounts: {
@@ -538,6 +835,10 @@ export interface components {
              * @default []
              */
             answer_reasons: string[];
+            /** Answer Review */
+            answer_review?: {
+                [key: string]: unknown;
+            } | null;
             /** Answered At */
             answered_at: string | null;
             /** Decision Note */
@@ -656,6 +957,10 @@ export interface components {
              * @default []
              */
             answer_reasons: string[];
+            /** Answer Review */
+            answer_review?: {
+                [key: string]: unknown;
+            } | null;
             /** Answered At */
             answered_at: string | null;
             /** Decision Note */
@@ -894,6 +1199,7 @@ export interface components {
              * @default 0
              */
             data_rows: number;
+            suggested?: components["schemas"]["SuggestedMapping"] | null;
         };
         /** PriceHistory */
         PriceHistory: {
@@ -930,6 +1236,71 @@ export interface components {
             flagged: boolean;
             /** Line Id */
             line_id?: string | null;
+        };
+        /** PurchaseIn */
+        PurchaseIn: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Doc
+             * @description Номер и дата документа, как в учёте
+             */
+            doc?: string | null;
+            /** Supplier */
+            supplier: string;
+            /** Supplier Inn */
+            supplier_inn?: string | null;
+            /**
+             * Item
+             * @description Номенклатура как в учёте
+             */
+            item: string;
+            /** Unit */
+            unit?: string | null;
+            /** Qty */
+            qty: number | string;
+            /** Price */
+            price?: number | string | null;
+            /**
+             * Amount
+             * @description Сумма строки с НДС
+             */
+            amount?: number | string | null;
+            /** Vat */
+            vat?: number | string | null;
+            /**
+             * Object
+             * @description Объект, склад, подразделение
+             */
+            object?: string | null;
+            /**
+             * Responsible
+             * @description Как ответственный записан в учёте
+             */
+            responsible?: string | null;
+            /**
+             * Ref
+             * @description Ссылка документа в источнике (GUID 1С)
+             */
+            ref?: string | null;
+        };
+        /** PurchasesIn */
+        PurchasesIn: {
+            /**
+             * Source
+             * @description Откуда строки: 1c:bp30, 1c:ut11, mcp, …
+             * @default 1c
+             */
+            source: string;
+            /** Period Start */
+            period_start?: string | null;
+            /** Period End */
+            period_end?: string | null;
+            /** Lines */
+            lines: components["schemas"]["PurchaseIn"][];
         };
         /**
          * Role
@@ -1020,6 +1391,103 @@ export interface components {
             by_responsible: components["schemas"]["BreakdownRow"][];
             /** By Material */
             by_material: components["schemas"]["BreakdownRow"][];
+        };
+        /** SubmitOut */
+        SubmitOut: {
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            status: components["schemas"]["RunStatus"];
+            /** Lines */
+            lines: number;
+            /** Status Url */
+            status_url: string;
+        };
+        /** SuggestedMapping */
+        SuggestedMapping: {
+            /** Header Row */
+            header_row?: number | null;
+            /** Mapping */
+            mapping: {
+                [key: string]: number;
+            };
+            /**
+             * By
+             * @enum {string}
+             */
+            by: "saved" | "ai";
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+        };
+        /** SyncIn */
+        SyncIn: {
+            /** Start */
+            start?: string | null;
+            /** End */
+            end?: string | null;
+        };
+        /** TokenCreated */
+        TokenCreated: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Prefix */
+            prefix: string;
+            /** Scopes */
+            scopes: string[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Revoked At */
+            revoked_at: string | null;
+            /**
+             * Token
+             * @description Показывается один раз
+             */
+            token: string;
+        };
+        /** TokenIn */
+        TokenIn: {
+            /** Name */
+            name: string;
+            /** Scopes */
+            scopes: ("push" | "mcp")[];
+        };
+        /** TokenOut */
+        TokenOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Prefix */
+            prefix: string;
+            /** Scopes */
+            scopes: string[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Revoked At */
+            revoked_at: string | null;
         };
         /** UploadOut */
         UploadOut: {
@@ -1698,6 +2166,39 @@ export interface operations {
             };
         };
     };
+    digest_api_audits__run_id__digest_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-org-id"?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DigestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_findings_api_findings_get: {
         parameters: {
             query?: {
@@ -1864,6 +2365,432 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FindingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tokens_api_integrations_tokens_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-org-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_token_api_integrations_tokens_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-org-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TokenIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_token_api_integrations_tokens__token_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-org-id"?: string | null;
+            };
+            path: {
+                token_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ping_api_integrations_ping_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+        };
+    };
+    submit_api_integrations_purchases_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PurchasesIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubmitOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_connections_api_integrations_connections_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-org-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_connection_api_integrations_connections_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-org-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_connection_api_integrations_connections_test_post: {
+        parameters: {
+            query?: {
+                connection_id?: string | null;
+            };
+            header?: {
+                "x-org-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionTestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_connection_api_integrations_connections__connection_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-org-id"?: string | null;
+            };
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_connection_api_integrations_connections__connection_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-org-id"?: string | null;
+            };
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_api_integrations_connections__connection_id__sync_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-org-id"?: string | null;
+            };
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    profiles_api_integrations_profiles_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-org-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    onec_module_api_integrations_1c_module_bsl_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-org-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
                 };
             };
             /** @description Validation Error */

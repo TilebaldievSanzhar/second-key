@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from secondkey.api.deps import SEE_ALL, UPLOAD, CurrentMember, Member, Session, require, stream_member
 from secondkey.api.schemas import (
     BreakdownRow,
+    DigestOut,
     FindingCounts,
     LineOut,
     Page,
@@ -43,7 +44,7 @@ from secondkey.db.models import (
 from secondkey.db.session import sessionmaker
 from secondkey.engine.report import RULE_TITLES
 from secondkey.services import progress
-from secondkey.services.audits import create_run
+from secondkey.services.audits import create_run, remember_mapping
 from secondkey.services.storage import get_storage
 from secondkey.worker.tasks import run_audit_task
 
@@ -69,9 +70,10 @@ async def start(body: RunIn, session: Session, member: Member = require(*UPLOAD)
             status.HTTP_422_UNPROCESSABLE_CONTENT, "Не все обязательные колонки распознаны — укажите их вручную"
         )
     org = await session.get(Organization, member.org_id)
-    run = await create_run(
-        session, org, upload, member.user.id, body.mapping, body.header_row or upload.preview.get("header_row") or None
-    )
+    header_row = body.header_row or upload.preview.get("header_row") or None
+    if body.mapping:
+        await remember_mapping(session, org, upload, body.mapping, header_row)
+    run = await create_run(session, org, upload, member.user.id, body.mapping, header_row)
     await session.commit()  # воркер должен увидеть прогон до того, как возьмёт задачу
     await run_audit_task.kiq(str(run.id))
     await session.refresh(run)
@@ -309,3 +311,68 @@ async def report(
     html = await get_storage().get(run.report_key)
     headers = {"Content-Disposition": f'attachment; filename="second-key-audit-{run_id}.html"'} if download else {}
     return HTMLResponse(html.decode("utf-8"), headers=headers)
+
+
+def _short(v: Decimal) -> str:
+    v = Decimal(v)
+    if v >= 1_000_000:
+        n = v / 1_000_000
+        return f"{n:.0f} млн сом" if n >= 100 else f"{n:.1f} млн сом".replace(".", ",")
+    return f"{v:,.0f} сом".replace(",", " ")
+
+
+@router.get("/{run_id}/digest", response_model=DigestOut)
+async def digest(run_id: uuid.UUID, session: Session, member: Member = require(*SEE_ALL)) -> DigestOut:
+    """Текст собственнику для WhatsApp: prompts/owner_digest, при сбое или без ИИ — шаблон."""
+    from secondkey.prompts import owner_digest
+    from secondkey.services.ai import owner_digest_text
+
+    run = await _run(session, run_id, member)
+    org = await session.get(Organization, member.org_id)
+    counts = dict(
+        (
+            await session.execute(
+                select(Finding.status, func.count()).where(Finding.run_id == run_id).group_by(Finding.status)
+            )
+        ).all()
+    )
+    confirmed = await session.scalar(
+        select(func.coalesce(func.sum(Finding.overpayment), 0)).where(
+            Finding.run_id == run_id, Finding.status == FindingStatus.confirmed
+        )
+    )
+    top = (
+        await session.scalars(
+            select(Finding)
+            .where(
+                Finding.run_id == run_id,
+                Finding.status.in_([FindingStatus.open, FindingStatus.answered]),
+                Finding.overpayment > 0,
+            )
+            .order_by(Finding.overpayment.desc())
+            .limit(3)
+        )
+    ).all()
+    share = (run.overpayment / run.spend * 100) if run.spend else Decimal(0)
+    inputs = owner_digest.Inputs(
+        company=org.name,
+        period=f"{run.period_start:%d.%m.%Y} — {run.period_end:%d.%m.%Y}" if run.period_start else "период проверки",
+        spend=_short(run.spend),
+        overpayment=_short(run.overpayment),
+        share=f"{share:.1f}%".replace(".", ","),
+        confirmed=_short(confirmed or 0),
+        waiting=counts.get(FindingStatus.open, 0) + counts.get(FindingStatus.answered, 0),
+        answered=counts.get(FindingStatus.answered, 0),
+        open=counts.get(FindingStatus.open, 0),
+        top=[
+            owner_digest.Top(
+                question=f"{f.sku_label or f.title} · {f.supplier or 'несколько поставщиков'} — "
+                f"{RULE_TITLES.get(f.code, f.title).lower()}",
+                amount=_short(f.overpayment),
+            )
+            for f in top
+        ],
+        link=f"{settings.public_url.rstrip('/')}/",
+    )
+    text, by = await owner_digest_text(inputs)
+    return DigestOut(text=text, by=by)

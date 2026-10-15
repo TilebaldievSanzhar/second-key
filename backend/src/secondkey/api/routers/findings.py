@@ -10,9 +10,11 @@ from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import false, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from secondkey import llm
 from secondkey.api.deps import ANSWER, MANAGE, CurrentMember, Member, Session, require
 from secondkey.api.schemas import AnswerIn, DecisionIn, FindingDetail, FindingLineOut, FindingOut, Page, PersonRef
 from secondkey.db.models import Finding, FindingStatus, PurchaseLine, Role, User
+from secondkey.worker.tasks import review_answer_task
 
 router = APIRouter(prefix="/findings", tags=["findings"])
 
@@ -109,8 +111,14 @@ async def answer(
     f.answer, f.answered_by, f.answered_at = body.answer.strip(), member.user.id, datetime.now(UTC)
     f.answer_reasons = list(dict.fromkeys(body.reasons))
     f.status = FindingStatus.answered
+    f.answer_review = None  # прежняя подсказка относилась к прежнему ответу
     await session.flush()
-    return _out(f)
+    out = _out(f)
+    if llm.enabled():
+        # подсказка собственнику (prompts/answer_review) — в фоне, ответ снабженца не ждёт модель
+        await session.commit()
+        await review_answer_task.kiq(str(f.id))
+    return out
 
 
 @router.post("/{finding_id}/decision", response_model=FindingOut)
