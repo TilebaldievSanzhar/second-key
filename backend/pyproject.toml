@@ -25,6 +25,9 @@ dependencies = [
     "python-multipart>=0.0.12",
     "typer>=0.13",
     "tzdata>=2024.2",               # расписание по Asia/Bishkek в slim-образах и на Windows
+    "openai>=3.22",                 # OpenAI-совместимый клиент: OpenRouter, vLLM, локальные модели
+    "mcp>=1.30,<2",                 # MCP-сервер «Второго ключа» (API v1: FastMCP)
+    "cryptography>=44",             # шифрование учётных данных подключений к 1С
 ]
 
 [project.scripts]

@@ -213,13 +213,42 @@ def import_registry(
                 "«Номенклатура/Наименование», «Количество»"
             )
         hdr_idx, mapping = found
-    result = ImportResult(lines=[], mapping=mapping, header_row=hdr_idx + 1)
+    return _build(rows[hdr_idx + 1 :], mapping, header_row=hdr_idx + 1, first_row_no=hdr_idx + 2)
+
+
+# поля контракта JSON-выгрузки (интеграции с 1С) → поля движка
+RECORD_FIELDS = {
+    "date": "date",
+    "doc": "doc_no",
+    "supplier": "supplier",
+    "supplier_inn": "supplier_inn",
+    "item": "item",
+    "unit": "unit",
+    "qty": "qty",
+    "price": "price",
+    "amount": "amount",
+    "vat": "vat",
+    "object": "object_name",
+    "responsible": "responsible",
+}
+
+
+def import_records(records: list[dict[str, object]]) -> ImportResult:
+    """Импорт строк из JSON (выгрузка из 1С по API): те же проверки, что у таблицы; номер строки — номер записи."""
+    keys = list(RECORD_FIELDS)
+    rows = [[r.get(k) for k in keys] for r in records]
+    mapping = {RECORD_FIELDS[k]: i for i, k in enumerate(keys)}
+    return _build(rows, mapping, header_row=0, first_row_no=1)
+
+
+def _build(rows: list[list[object]], mapping: dict[str, int], header_row: int, first_row_no: int) -> ImportResult:
+    result = ImportResult(lines=[], mapping=mapping, header_row=header_row)
 
     def cell(row: list[object], fld: str) -> object:
         idx = mapping.get(fld)
         return row[idx] if idx is not None and idx < len(row) else None
 
-    for i, row in enumerate(rows[hdr_idx + 1 :], start=hdr_idx + 2):
+    for i, row in enumerate(rows, start=first_row_no):
         if not any(c not in (None, "") for c in row):
             continue
         d = parse_date(cell(row, "date")) or parse_date(cell(row, "doc_no"))

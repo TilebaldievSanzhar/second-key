@@ -1,0 +1,12 @@
+{% import "_shared/macros.j2" as m %}
+Факты (посчитаны системой):
+- компания: {{ company }}
+- период: {{ period }}
+- закупки: {{ spend }}
+- возможная переплата: {{ overpayment }} ({{ share }} от закупок)
+- подтверждено собственником: {{ confirmed }}
+- ждут решения: {{ waiting }}, из них с ответом снабжения: {{ answered }}, без ответа: {{ open }}
+{% for t in top %}
+- вопрос {{ loop.index }}: {{ t.question }} — {{ t.amount }}
+{% endfor %}
+- ссылка: {{ link }}

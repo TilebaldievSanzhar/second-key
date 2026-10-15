@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from secondkey import __version__
-from secondkey.api.routers import audits, auth, findings, health, org, uploads
+from secondkey.api.routers import audits, auth, findings, health, integrations, org, uploads
 from secondkey.config import settings
 from secondkey.db.session import dispose_engine
 from secondkey.observability import configure_logging, log
@@ -81,7 +81,15 @@ def create_app() -> FastAPI:
             )
         return response
 
-    for r in (health.router, auth.router, org.router, uploads.router, audits.router, findings.router):
+    for r in (
+        health.router,
+        auth.router,
+        org.router,
+        uploads.router,
+        audits.router,
+        findings.router,
+        integrations.router,
+    ):
         app.include_router(r, prefix="/api")
     return app
 

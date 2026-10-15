@@ -38,3 +38,41 @@ async def collect_market_task(per_query: int = 40) -> dict:
         res = await market.collect_kg_goszakupki(s, per_query=per_query)
     log.info("market.collected", **res)
     return res
+
+
+# подсказка собственнику к ответу снабжения (prompts/answer_review); без ИИ задача не ставится
+@broker.task(task_name="ai.review_answer", retry_on_error=True, timeout=120)
+async def review_answer_task(finding_id: str) -> None:
+    from secondkey.services import ai
+
+    await ai.review_answer(uuid.UUID(finding_id))
+
+
+@broker.task(task_name="integrations.sync", timeout=30 * 60)
+async def sync_connection_task(connection_id: str, start: str | None = None, end: str | None = None) -> str | None:
+    from datetime import date
+
+    from secondkey.services import integrations
+
+    run_id = await integrations.sync_connection(
+        uuid.UUID(connection_id), date.fromisoformat(start) if start else None, date.fromisoformat(end) if end else None
+    )
+    return str(run_id) if run_id else None
+
+
+# ежедневный забор из 1С для подключений с расписанием «daily»
+@broker.task(task_name="integrations.sync_scheduled", schedule=[{"cron": "0 6 * * *", "cron_offset": "Asia/Bishkek"}])
+async def sync_scheduled_task() -> int:
+    from sqlalchemy import select
+
+    from secondkey.db.models import Connection
+
+    async with session_scope() as s:
+        ids = [
+            c.id
+            for c in (await s.scalars(select(Connection).where(Connection.enabled.is_(True)))).all()
+            if (c.config or {}).get("schedule") == "daily"
+        ]
+    for cid in ids:
+        await sync_connection_task.kiq(str(cid))
+    return len(ids)

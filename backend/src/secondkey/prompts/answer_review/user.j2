@@ -1,0 +1,13 @@
+{% import "_shared/macros.j2" as m %}
+Вопрос: {{ question }}
+Правило: {{ rule }}
+Что нашла система: {{ explanation }}
+Оценка переплаты: {{ overpayment }}{% if reference %}; эталон цены: {{ reference }}{% endif %}{% if supplier %}; поставщик: {{ supplier }}{% endif %}
+
+Факты строк учёта:
+{% for f in facts %}
+- {{ f }}
+{% endfor %}
+
+{{ m.data("причины, отмеченные снабженцем", answer_reasons | join(", ") or "не отмечены") }}
+{{ m.data("ответ снабженца", answer) }}

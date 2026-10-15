@@ -1,0 +1,5 @@
+version = "1.0"
+description = "Короткое сообщение собственнику в WhatsApp об итогах проверки; все числа — из фактов, посчитанных кодом"
+tier = "light"
+temperature = 0.2
+max_tokens = 800

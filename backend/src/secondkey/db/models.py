@@ -180,6 +180,7 @@ class Finding(IdMixin, CreatedMixin, Base):
     status: Mapped[FindingStatus] = mapped_column(_enum(FindingStatus), default=FindingStatus.open)
     answer: Mapped[str | None] = mapped_column(Text)
     answer_reasons: Mapped[list[Any]] = mapped_column(default=list)  # быстрые причины: «Срочная поставка»…
+    answer_review: Mapped[dict[str, Any] | None] = mapped_column()  # подсказка ИИ к ответу (prompts/answer_review)
     answered_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     answered_at: Mapped[datetime | None] = mapped_column()
     decision_note: Mapped[str | None] = mapped_column(Text)
@@ -223,3 +224,35 @@ class FxRate(Base):
     currency: Mapped[str] = mapped_column(String(3), primary_key=True)
     rate: Mapped[Decimal]  # сом за 1 единицу валюты (НБКР)
     source: Mapped[str] = mapped_column(String(32), default="nbkr")
+
+
+class IntegrationToken(IdMixin, CreatedMixin, Base):
+    """Токен интеграции организации: выгрузка из 1С по API, MCP-клиенты. Хранится только хэш."""
+
+    __tablename__ = "integration_tokens"
+
+    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    prefix: Mapped[str] = mapped_column(String(16))  # «sk_7Hq2…» — узнать токен в списке
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)  # sha256 от токена
+    scopes: Mapped[list[Any]] = mapped_column(default=list)  # push, mcp
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    last_used_at: Mapped[datetime | None] = mapped_column()
+    revoked_at: Mapped[datetime | None] = mapped_column()
+
+
+class Connection(IdMixin, CreatedMixin, Base):
+    """Подключение к учётной системе (сейчас — 1С по OData). Пароль — в secret, зашифрован SK_DATA_KEY."""
+
+    __tablename__ = "connections"
+
+    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(32))  # onec_odata
+    name: Mapped[str] = mapped_column(String(120))
+    config: Mapped[dict[str, Any]] = mapped_column(default=dict)  # base_url, profile, username, period_days
+    secret: Mapped[str | None] = mapped_column(Text)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_sync_at: Mapped[datetime | None] = mapped_column()
+    last_status: Mapped[str | None] = mapped_column(String(16))  # ok | error
+    last_error: Mapped[str | None] = mapped_column(Text)
+    last_run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("audit_runs.id", ondelete="SET NULL"))

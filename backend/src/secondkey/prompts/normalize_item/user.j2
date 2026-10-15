@@ -1,0 +1,4 @@
+{% import "_shared/macros.j2" as m %}
+Перепиши названия. Для каждой строки верни id, canonical, head и reason.
+
+{{ m.data("строки", lines | json) }}

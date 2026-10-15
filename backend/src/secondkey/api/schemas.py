@@ -88,6 +88,13 @@ class MemberIn(BaseModel):
 # --- uploads / runs ---------------------------------------------------------------------------
 
 
+class SuggestedMapping(BaseModel):
+    header_row: int | None = None
+    mapping: dict[str, int]
+    by: Literal["saved", "ai"]
+    notes: str = ""
+
+
 class PreviewOut(BaseModel):
     header_row: int
     columns: list[str]
@@ -95,6 +102,7 @@ class PreviewOut(BaseModel):
     sample: list[list[str]]
     missing: list[str]
     data_rows: int = 0
+    suggested: SuggestedMapping | None = None
 
 
 class UploadOut(Out):
@@ -182,6 +190,7 @@ class FindingOut(Out):
     status: FindingStatus
     answer: str | None
     answer_reasons: list[str] = []
+    answer_review: dict[str, Any] | None = None
     answered_at: datetime | None
     decision_note: str | None
     decided_at: datetime | None
@@ -272,3 +281,78 @@ class PriceHistory(BaseModel):
     unit: str | None
     purchases: list[PricePoint]
     market: list[PricePoint]
+
+
+# --- интеграции ----------------------------------------------------------------------------------
+
+
+class DigestOut(BaseModel):
+    text: str
+    by: Literal["ai", "template"]
+
+
+class TokenIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    scopes: list[Literal["push", "mcp"]] = Field(min_length=1)
+
+
+class TokenOut(Out):
+    id: uuid.UUID
+    name: str
+    prefix: str
+    scopes: list[str]
+    created_at: datetime
+    last_used_at: datetime | None
+    revoked_at: datetime | None
+
+
+class TokenCreated(TokenOut):
+    token: str = Field(description="Показывается один раз")
+
+
+class SubmitOut(BaseModel):
+    run_id: uuid.UUID
+    status: RunStatus
+    lines: int
+    status_url: str
+
+
+class ConnectionIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    base_url: str = Field(
+        min_length=8, max_length=500, description="Адрес публикации базы, напр. https://1c.example.kg/bp"
+    )
+    username: str = Field(max_length=200)
+    password: str | None = Field(default=None, max_length=200, description="Пустой — оставить сохранённый")
+    profile: Literal["bp30", "ut11"] = "bp30"
+    period_days: int = Field(default=90, ge=7, le=730)
+    schedule: Literal["manual", "daily"] = "manual"
+
+
+class ConnectionOut(BaseModel):
+    id: uuid.UUID
+    kind: str
+    name: str
+    enabled: bool
+    base_url: str | None
+    username: str | None
+    profile: str | None
+    period_days: int
+    schedule: str
+    has_password: bool
+    last_sync_at: datetime | None
+    last_status: str | None
+    last_error: str | None
+    last_run_id: uuid.UUID | None
+
+
+class ConnectionTestOut(BaseModel):
+    ok: bool
+    profile: str | None = None
+    title: str | None = None
+    error: str | None = None
+
+
+class SyncIn(BaseModel):
+    start: date | None = None
+    end: date | None = None

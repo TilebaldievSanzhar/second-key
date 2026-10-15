@@ -1,0 +1,6 @@
+{% import "_shared/macros.j2" as m %}
+Первые строки файла (каждая — список ячеек):
+
+{% for r in rows %}
+{{ m.data("строка " ~ loop.index, r | json) }}
+{% endfor %}

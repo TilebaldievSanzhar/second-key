@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import re
 import tempfile
 import uuid
@@ -20,6 +21,7 @@ from typing import Any
 from sqlalchemy import delete, func, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from secondkey.config import settings
 from secondkey.db.models import (
     AuditRun,
     Finding,
@@ -31,7 +33,7 @@ from secondkey.db.models import (
     Upload,
 )
 from secondkey.db.session import session_scope
-from secondkey.engine.importer import import_registry, preview_registry
+from secondkey.engine.importer import import_records, import_registry, preview_registry
 from secondkey.engine.market import MarketPoint as EnginePoint
 from secondkey.engine.market import MarketStore
 from secondkey.engine.normalize import normalize
@@ -86,9 +88,10 @@ async def create_upload(
     if not data:
         raise UserFacingError("Файл пустой")
     try:
-        preview = await _with_tempfile(data, suffix, preview_registry)
+        preview = asdict(await _with_tempfile(data, suffix, preview_registry))
     except Exception as exc:
         raise UserFacingError(f"Не удалось прочитать таблицу: {exc}") from exc
+    preview["suggested"] = await _suggest(session, org_id, preview)
 
     upload_id = uuid.uuid4()
     key = f"org/{org_id}/uploads/{upload_id}/{safe_filename(filename)}"
@@ -102,7 +105,75 @@ async def create_upload(
         sha256=hashlib.sha256(data).hexdigest(),
         storage_key=key,
         uploaded_by=user_id,
-        preview=asdict(preview),
+        preview=preview,
+    )
+    session.add(upload)
+    await session.flush()
+    return upload
+
+
+def header_signature(columns: list[str]) -> str:
+    """Отпечаток шапки выгрузки: та же форма отчёта из 1С → то же сопоставление колонок."""
+    norm = "|".join(re.sub(r"\s+", " ", c).strip().lower() for c in columns)
+    return hashlib.sha1(norm.encode()).hexdigest()[:16]
+
+
+async def _suggest(session: AsyncSession, org_id: uuid.UUID, preview: dict) -> dict | None:
+    """Сохранённое сопоставление для такой же шапки, иначе — подсказка ИИ, если автопоиск не справился."""
+    if preview.get("columns"):
+        org = await session.get(Organization, org_id)
+        saved = ((org.settings or {}).get("mapping_profiles") or {}).get(header_signature(preview["columns"]))
+        if saved:
+            return {**saved, "by": "saved"}
+    if not preview.get("missing"):
+        return None
+    from secondkey import llm
+    from secondkey.services import ai
+
+    return await ai.suggest_mapping(preview) if llm.enabled() else None
+
+
+async def remember_mapping(
+    session: AsyncSession, org: Organization, upload: Upload, mapping: dict[str, int], header_row: int | None
+) -> None:
+    """Подтверждённое человеком сопоставление запоминается для следующих выгрузок той же формы."""
+    columns = upload.preview.get("columns") or []
+    if not columns or (mapping == upload.preview.get("mapping") and header_row == upload.preview.get("header_row")):
+        return
+    profiles = dict((org.settings or {}).get("mapping_profiles") or {})
+    profiles[header_signature(columns)] = {"mapping": mapping, "header_row": header_row}
+    org.settings = {**(org.settings or {}), "mapping_profiles": profiles}
+
+
+async def create_json_upload(
+    session: AsyncSession, org_id: uuid.UUID, user_id: uuid.UUID | None, records: list[dict], source: str
+) -> Upload:
+    """Строки закупок по API или из OData: хранятся как есть (JSON в S3) — для доказательства и повтора."""
+    data = json.dumps({"source": source, "lines": records}, ensure_ascii=False).encode()
+    upload_id = uuid.uuid4()
+    dates = sorted(r["date"] for r in records if r.get("date"))
+    name = f"{source} {dates[0]}–{dates[-1]}.json" if dates else f"{source}.json"
+    key = f"org/{org_id}/uploads/{upload_id}/lines.json"
+    await get_storage().put(key, data, "application/json")
+    upload = Upload(
+        id=upload_id,
+        org_id=org_id,
+        kind="json",
+        filename=safe_filename(name),
+        content_type="application/json",
+        size=len(data),
+        sha256=hashlib.sha256(data).hexdigest(),
+        storage_key=key,
+        uploaded_by=user_id,
+        preview={
+            "header_row": 0,
+            "columns": [],
+            "mapping": {},
+            "sample": [],
+            "missing": [],
+            "data_rows": len(records),
+            "source": source,
+        },
     )
     session.add(upload)
     await session.flush()
@@ -196,7 +267,10 @@ async def execute_run(run_id: uuid.UUID) -> None:
         cols = (mapping or {}).get("columns")
         hdr = (mapping or {}).get("header_row")
         try:
-            imp = await _with_tempfile(data, _suffix(upload.filename), import_registry, cols, hdr)
+            if upload.kind == "json":
+                imp = await asyncio.to_thread(import_records, json.loads(data)["lines"])
+            else:
+                imp = await _with_tempfile(data, _suffix(upload.filename), import_registry, cols, hdr)
         except ValueError as exc:
             raise UserFacingError(str(exc)) from exc
         if not imp.lines:
@@ -204,6 +278,7 @@ async def execute_run(run_id: uuid.UUID) -> None:
 
         await _set_stage(run_id, RunStatus.normalizing, 30)
         norm = await asyncio.to_thread(normalize, imp.lines)
+        norm = await _ai_normalize(norm, imp.warnings)
 
         await _set_stage(run_id, RunStatus.analyzing, 55)
         async with session_scope() as s:
@@ -239,6 +314,23 @@ async def execute_run(run_id: uuid.UUID) -> None:
             error="Внутренняя ошибка при обработке. Мы уже видим её в журнале; попробуйте запустить ещё раз.",
         )
         raise exc
+
+
+async def _ai_normalize(norm, warnings: list[str]):
+    """Нераспознанные строки — модулю промптов normalize_item; позицию по-прежнему определяет движок."""
+    from secondkey import llm
+    from secondkey.services import ai
+
+    if not llm.enabled() or not any(n.status == "needs_input" for n in norm):
+        return norm
+    try:
+        norm, fixed = await ai.normalize_fallback(norm, settings.llm_max_normalize_lines)
+    except Exception as exc:  # ИИ — улучшение, а не условие прогона
+        log.warning("ai.normalize_failed", error=str(exc)[:300])
+        return norm
+    if fixed:
+        warnings.append(f"ИИ распознал номенклатуру в {fixed} строках — они помечены «ИИ» в отчёте")
+    return norm
 
 
 async def _persist(run_id: uuid.UUID, result, market_points: int) -> None:
