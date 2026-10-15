@@ -50,6 +50,11 @@ class AuditConfig:
 MarketLookup = Callable[[str, "object", int], list[Decimal]]
 
 
+def _q(name: str) -> str:
+    """Имя в кавычках для текста: «ОсОО «Темир Снаб»» не удваиваем, ИП Сыдыков → «ИП Сыдыков»."""
+    return name if "«" in name or '"' in name else f"«{name}»"
+
+
 def _median(values: list[Decimal]) -> Decimal:
     return Decimal(str(statistics.median(values)))
 
@@ -162,7 +167,7 @@ def p01_parallel_supplier(lines: list[NormLine], cfg: AuditConfig) -> list[Audit
                 severity="high" if prem >= Decimal("0.10") else "medium",
                 title="Дороже параллельного поставщика",
                 message=(
-                    f"{nl.sku_label}: у «{supplier}» в среднем на {_pct(prem)} дороже, чем в те же недели "
+                    f"{nl.sku_label}: у {_q(supplier)} в среднем на {_pct(prem)} дороже, чем в те же недели "
                     f"у {alts}; покупок: {len(a['lines'])}, переплата {_fmt(total)} сом"
                 ),
                 line_ids=list(a["lines"]),
@@ -233,7 +238,7 @@ def p02_price_creep(lines: list[NormLine], cfg: AuditConfig, market: MarketLooku
                     severity="high",
                     title="Ползучий рост цены",
                     message=(
-                        f"{nl.sku_label}: у «{supplier}» цена относительно рынка выросла с {_pct(start - 1)} "
+                        f"{nl.sku_label}: у {_q(supplier)} цена относительно рынка выросла с {_pct(start - 1)} "
                         f"до {_pct(end - 1)} за {(sl[-1].line.date - sl[0].line.date).days} дн.; "
                         f"переплата против роста вместе с рынком {_fmt(total)} сом"
                     ),
@@ -285,7 +290,7 @@ def p03_above_market(lines: list[NormLine], cfg: AuditConfig, market: MarketLook
                 severity="medium",
                 title="Выше рынка",
                 message=(
-                    f"{nl.sku_label}: у «{supplier}» на {_pct(prem)} выше рыночной цены "
+                    f"{nl.sku_label}: у {_q(supplier)} на {_pct(prem)} выше рыночной цены "
                     f"(медиана {_fmt(_median(a['refs']))} сом за {nl.unit}); покупок: {len(a['lines'])}; "
                     f"переплата сверх допуска {_pct(cfg.market_tolerance)} — {_fmt(total)} сом"
                 ),
@@ -344,7 +349,7 @@ def p04_concentration(lines: list[NormLine], cfg: AuditConfig) -> list[AuditFind
                 severity="medium",
                 title="Концентрация у дорогого поставщика",
                 message=(
-                    f"{head.capitalize()}: «{top}» получает {_pct(share)} закупок категории и при этом "
+                    f"{head.capitalize()}: {_q(top)} получает {_pct(share)} закупок категории и при этом "
                     f"в среднем на {_pct(p)} дороже других поставщиков в те же недели"
                 ),
                 line_ids=[n.line_id for n in hl if n.line.supplier == top],
@@ -389,7 +394,7 @@ def p05_split(lines: list[NormLine], cfg: AuditConfig) -> list[AuditFinding]:
                         severity="medium",
                         title="Дробление закупки",
                         message=(
-                            f"{nl.sku_label}: {len(cluster)} покупок у «{supplier}» за "
+                            f"{nl.sku_label}: {len(cluster)} покупок у {_q(supplier)} за "
                             f"{(cluster[-1].line.date - cluster[0].line.date).days + 1} дн., каждая чуть ниже порога "
                             f"согласования {_fmt(cfg.approval_threshold)} сом, вместе {_fmt(s)} сом"
                         ),
@@ -430,7 +435,7 @@ def p06_duplicates(lines: list[NormLine], cfg: AuditConfig) -> list[AuditFinding
                     severity="high",
                     title="Повтор документа",
                     message=(
-                        f"«{L.supplier}», документ {doc_short(L.doc_no)} от {L.date:%d.%m.%Y}: "
+                        f"{_q(L.supplier)}, документ {doc_short(L.doc_no)} от {L.date:%d.%m.%Y}: "
                         f"строка «{L.item_raw}» на {_fmt(L.amount)} сом учтена повторно"
                     ),
                     line_ids=[first.line_id, n.line_id],
