@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { api, unwrap, type Role } from "./api/client";
+import { createContext, useContext } from "react";
+import { api, unwrap, type Finding, type Role, type Run } from "./api/client";
 
 export function useMe() {
   return useQuery({ queryKey: ["me"], queryFn: () => unwrap(api.GET("/api/auth/me")), retry: false });
@@ -14,3 +15,53 @@ export const canDecide = (r?: Role) => r === "owner" || r === "finance";
 export const canUpload = (r?: Role) => r === "owner" || r === "finance" || r === "accountant";
 export const canSeeAll = (r?: Role) => r !== undefined && r !== "buyer";
 export const canAnswer = (r?: Role) => r !== undefined && r !== "viewer";
+
+export const ROLE_TEXT: Record<Role, string> = {
+  owner: "Собственник",
+  finance: "Финансы",
+  accountant: "Бухгалтер",
+  buyer: "Снабжение",
+  viewer: "Наблюдатель",
+};
+
+// --- проверка (audit run), с которой сейчас работает человек ------------------------------------
+
+export function useRuns() {
+  return useQuery({
+    queryKey: ["runs"],
+    queryFn: () => unwrap(api.GET("/api/audits", { params: { query: { limit: 50 } } })),
+    // идущая проверка обновляется, пока не завершится
+    refetchInterval: (q) => (q.state.data?.items.some((r) => r.status !== "done" && r.status !== "failed") ? 3000 : false),
+  });
+}
+
+type RunCtx = { run: Run | undefined; runs: Run[]; select: (id: string) => void; loading: boolean };
+export const RunContext = createContext<RunCtx>({ run: undefined, runs: [], select: () => {}, loading: true });
+/** Выбранная проверка; по умолчанию — последняя завершённая. */
+export const useCurrentRun = () => useContext(RunContext);
+
+export function pickRun(runs: Run[], selected: string | null): Run | undefined {
+  return runs.find((r) => r.id === selected) ?? runs.find((r) => r.status === "done");
+}
+
+/** Все вопросы проверки одним запросом: их десятки, фильтры и счётчики — на клиенте. */
+export function useRunFindings(runId: string | undefined) {
+  return useQuery({
+    queryKey: ["findings", runId],
+    enabled: !!runId,
+    queryFn: () => unwrap(api.GET("/api/findings", { params: { query: { run_id: runId, limit: 200 } } })),
+    select: (d) => d.items,
+  });
+}
+
+export function useSummary(runId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ["summary", runId],
+    enabled: !!runId && enabled,
+    queryFn: () => unwrap(api.GET("/api/audits/{run_id}/summary", { params: { path: { run_id: runId! } } })),
+  });
+}
+
+/** Очередь разбора: ждущие решения, крупные сверху (сервер уже отсортировал по сумме). */
+export const waitingQueue = (items: Finding[] | undefined) =>
+  (items ?? []).filter((f) => f.status === "open" || f.status === "answered");

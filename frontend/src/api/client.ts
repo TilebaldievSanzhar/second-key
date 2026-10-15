@@ -5,19 +5,24 @@ import type { components, paths } from "./schema";
 export type Schemas = components["schemas"];
 export type Run = Schemas["RunOut"];
 export type RunSummary = Schemas["RunSummary"];
+export type Breakdown = Schemas["BreakdownRow"];
 export type Finding = Schemas["FindingOut"];
 export type FindingDetail = Schemas["FindingDetail"];
+export type FindingLine = Schemas["FindingLineOut"];
 export type FindingStatus = Schemas["FindingStatus"];
 export type Upload = Schemas["UploadOut"];
 export type Me = Schemas["MeOut"];
 export type Org = Schemas["OrgOut"];
+export type Member = Schemas["MemberOut"];
 export type PriceHistory = Schemas["PriceHistory"];
+export type PricePoint = Schemas["PricePoint"];
 export type Role = Schemas["Role"];
 
 export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    public requestId?: string,
   ) {
     super(message);
   }
@@ -39,9 +44,21 @@ api.use(onUnauthorized);
 
 type Result<T> = { data?: T; error?: unknown; response: Response };
 
+const FALLBACK: Record<number, string> = {
+  403: "Это действие доступно собственнику и финансам",
+  404: "Не нашли — возможно, у вас нет к этому доступа",
+  413: "Файл слишком большой",
+};
+
 /** Данные или ApiError с текстом бэкенда (detail) — его можно показывать пользователю. */
 export async function unwrap<T>(p: Promise<Result<T>>): Promise<T> {
-  const { data, error, response } = await p;
+  let res: Result<T>;
+  try {
+    res = await p;
+  } catch {
+    throw new ApiError(0, "Нет связи с сервером. Проверьте интернет и попробуйте ещё раз.");
+  }
+  const { data, error, response } = res;
   if (error !== undefined || data === undefined) {
     const detail = (error as { detail?: unknown } | undefined)?.detail;
     const message =
@@ -49,8 +66,10 @@ export async function unwrap<T>(p: Promise<Result<T>>): Promise<T> {
         ? detail
         : Array.isArray(detail)
           ? "Проверьте введённые значения"
-          : `Сервер ответил ${response.status}`;
-    throw new ApiError(response.status, message);
+          : response.status >= 500
+            ? "Сервер не отвечает. Данные не потеряны, попробуйте через минуту."
+            : (FALLBACK[response.status] ?? `Сервер ответил ${response.status}`);
+    throw new ApiError(response.status, message, response.headers.get("x-request-id") ?? undefined);
   }
   return data;
 }

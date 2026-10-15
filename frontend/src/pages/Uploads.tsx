@@ -1,131 +1,468 @@
+// Новая проверка: файл → колонки → проверка. Прогресс — по SSE, страницу можно закрыть: проверка идёт в фоне.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router";
+import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { useNavigate } from "react-router";
 import { api, unwrap, type Run, type Upload } from "../api/client";
-import { Empty, ErrorNote, Loading } from "../components/State";
-import { RUN_STAGE, date, money } from "../format";
-import { canUpload, useRole } from "../session";
+import { Icon } from "../components/Icon";
+import { StageProgress } from "../components/StageProgress";
+import { Empty, ErrorNote, Notice, Skeleton } from "../components/State";
+import { LINES, QUESTIONS, count, date, dayTime, fileSize, int, moneyShort } from "../format";
+import { canUpload, useCurrentRun, useRole, useRuns } from "../session";
+import { MobileHead } from "./Layout";
 
-const FIELD_LABEL: Record<string, string> = {
-  date: "Дата", supplier: "Поставщик", item: "Номенклатура", qty: "Количество", price: "Цена", amount: "Сумма",
-  unit: "Ед. изм.", doc: "Документ", inn: "ИНН", vat: "НДС", object: "Объект", responsible: "Ответственный",
-};
+const FIELDS: { key: string; label: string }[] = [
+  { key: "date", label: "Дата" },
+  { key: "doc_no", label: "Документ" },
+  { key: "supplier", label: "Поставщик" },
+  { key: "supplier_inn", label: "ИНН поставщика" },
+  { key: "item", label: "Номенклатура" },
+  { key: "unit", label: "Ед. изм." },
+  { key: "qty", label: "Количество" },
+  { key: "price", label: "Цена" },
+  { key: "amount", label: "Сумма" },
+  { key: "vat", label: "НДС" },
+  { key: "object_name", label: "Объект" },
+  { key: "responsible", label: "Ответственный" },
+];
+const LABEL = Object.fromEntries(FIELDS.map((f) => [f.key, f.label]));
+const REQUIRED: { label: string; ok: (m: Record<string, number>) => boolean }[] = [
+  { label: "Дата", ok: (m) => "date" in m },
+  { label: "Поставщик", ok: (m) => "supplier" in m },
+  { label: "Номенклатура", ok: (m) => "item" in m },
+  { label: "Количество", ok: (m) => "qty" in m },
+  { label: "Цена или сумма", ok: (m) => "price" in m || "amount" in m },
+];
+const TERMINAL = ["done", "failed"];
+const MAX_MB = 25;
+
+type Step = "file" | "columns" | "check";
 
 export function UploadsPage() {
   const role = useRole();
-  const qc = useQueryClient();
+  const runs = useRuns();
+  const running = runs.data?.items.find((r) => !TERMINAL.includes(r.status));
+  const [step, setStep] = useState<Step>(running ? "check" : "file");
   const [upload, setUpload] = useState<Upload | null>(null);
-  const [activeRun, setActiveRun] = useState<string | null>(null);
-  const runs = useQuery({ queryKey: ["runs"], queryFn: () => unwrap(api.GET("/api/audits")) });
-  const refreshRuns = useCallback(() => qc.invalidateQueries({ queryKey: ["runs"] }), [qc]);
+  const [runId, setRunId] = useState<string | null>(running?.id ?? null);
+  const activeRun = runId ?? running?.id ?? null;
+  const reset = () => {
+    setUpload(null);
+    setRunId(null);
+    setStep("file");
+  };
 
+  return (
+    <section className="page">
+      <MobileHead>
+        <span className="mhead-title">Загрузки</span>
+      </MobileHead>
+      {canUpload(role) && (
+        <>
+          <header className="page-head">
+            <div>
+              <h1 className="page-title">Новая проверка</h1>
+              <p className="page-sub">Выгрузка закупок из 1С за 6–12 месяцев</p>
+            </div>
+          </header>
+          <ol className="steps">
+            {(["file", "columns", "check"] as Step[]).map((s, i) => {
+              const order = ["file", "columns", "check"].indexOf(step);
+              const st = i < order ? "done" : i === order ? "now" : "todo";
+              return (
+                <li key={s} className={`step step-${st}`} aria-current={st === "now" ? "step" : undefined}>
+                  <span className="step-dot">{st === "done" ? <Icon name="check" size={12} strokeWidth={3} /> : i + 1}</span>
+                  {["Файл", "Колонки", "Проверка"][i]}
+                </li>
+              );
+            })}
+          </ol>
+          {step === "file" && (
+            <FileStep
+              onUploaded={(u) => {
+                setUpload(u);
+                setStep("columns");
+              }}
+            />
+          )}
+          {step === "columns" && upload && (
+            <ColumnsStep
+              upload={upload}
+              onReplace={reset}
+              onStarted={(id) => {
+                setRunId(id);
+                setStep("check");
+              }}
+            />
+          )}
+          {step === "check" && activeRun && <CheckStep runId={activeRun} onAgain={reset} />}
+        </>
+      )}
+      <PastRuns runs={runs.data?.items} loading={runs.isPending} error={runs.error} />
+    </section>
+  );
+}
+
+function FileStep({ onUploaded }: { onUploaded: (u: Upload) => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [over, setOver] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
   const send = useMutation({
     mutationFn: (file: File) => {
       const body = new FormData();
       body.append("file", file);
-      // multipart: тело передаём как есть, тип границы проставит браузер
+      // multipart: тело передаём как есть, границу проставит браузер
       return unwrap(api.POST("/api/uploads", { body: body as never, bodySerializer: (b) => b as unknown as FormData }));
     },
-    onSuccess: setUpload,
+    onSuccess: onUploaded,
   });
+  const pick = (file: File | undefined) => {
+    if (!file) return;
+    setLocalError(null);
+    if (!/\.(xlsx|xlsm|csv)$/i.test(file.name)) return setLocalError("Нужен файл Excel (.xlsx) или CSV — выгрузка закупок из 1С или таблица");
+    if (file.size > MAX_MB * 1024 * 1024)
+      return setLocalError(`Файл больше ${MAX_MB} МБ — выгрузите период короче или без лишних колонок`);
+    send.mutate(file);
+  };
+  const onDrop = (e: DragEvent) => {
+    e.preventDefault();
+    setOver(false);
+    pick(e.dataTransfer.files[0]);
+  };
+  return (
+    <div className="file-step">
+      <div
+        className={`dropzone${over ? " dropzone-over" : ""}${send.isPending ? " dropzone-busy" : ""}`}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setOver(true);
+        }}
+        onDragLeave={() => setOver(false)}
+        onDrop={onDrop}
+      >
+        <Icon name="sheet" size={28} />
+        {send.isPending ? (
+          <span className="dropzone-title">Читаем файл…</span>
+        ) : (
+          <>
+            <span className="dropzone-title">Перетащите выгрузку сюда</span>
+            <span className="muted small">.xlsx, .xlsm или .csv, до {MAX_MB} МБ</span>
+            <button type="button" className="btn btn-primary" onClick={() => input.current?.click()}>
+              Выбрать файл
+            </button>
+          </>
+        )}
+        <input ref={input} type="file" accept=".xlsx,.xlsm,.csv" hidden onChange={(e) => pick(e.target.files?.[0])} />
+      </div>
+      <div className="howto">
+        <h3>Как выгрузить из 1С</h3>
+        <ol>
+          <li>Отчёты → Закупки → «Поступление товаров и услуг».</li>
+          <li>Детализация — по строкам товаров, период — 6–12 месяцев.</li>
+          <li>Колонки: дата, документ, контрагент, номенклатура, количество, цена или сумма; объект и ответственный — если есть.</li>
+          <li>Сохранить → Лист Excel (.xlsx).</li>
+        </ol>
+      </div>
+      {localError && (
+        <p className="inline-error" role="alert">
+          <Icon name="alert" size={18} strokeWidth={2} />
+          {localError}
+        </p>
+      )}
+      {send.error && <ErrorNote error={send.error} />}
+    </div>
+  );
+}
+
+function ColumnsStep({ upload, onReplace, onStarted }: { upload: Upload; onReplace: () => void; onStarted: (runId: string) => void }) {
+  const p = upload.preview;
+  const qc = useQueryClient();
+  // шапку не нашли — человек выбирает строку с заголовками среди первых строк файла
+  const [headerRow, setHeaderRow] = useState(p.header_row || 0);
+  const columns = p.header_row ? p.columns : headerRow ? (p.sample[headerRow - 1] ?? []) : [];
+  const rows = p.header_row ? p.sample.slice(0, 5) : headerRow ? p.sample.slice(headerRow, headerRow + 5) : [];
+  const [mapping, setMapping] = useState<Record<string, number>>(p.header_row ? { ...p.mapping } : {});
+  const byCol = useMemo(() => Object.fromEntries(Object.entries(mapping).map(([f, c]) => [c, f])), [mapping]);
+  const missing = REQUIRED.filter((r) => !r.ok(mapping));
+
+  const assign = (col: number, field: string) =>
+    setMapping((m) => {
+      const next = Object.fromEntries(Object.entries(m).filter(([f, c]) => c !== col && f !== field));
+      if (field) next[field] = col;
+      return next;
+    });
+
   const start = useMutation({
-    mutationFn: (uploadId: string) => unwrap(api.POST("/api/audits", { body: { upload_id: uploadId } })),
+    mutationFn: () =>
+      unwrap(api.POST("/api/audits", { body: { upload_id: upload.id, mapping, header_row: headerRow || null } })),
     onSuccess: (run) => {
-      setUpload(null);
-      setActiveRun(run.id);
-      refreshRuns();
+      qc.invalidateQueries({ queryKey: ["runs"] });
+      onStarted(run.id);
     },
   });
 
   return (
-    <section>
-      <h2>Загрузки</h2>
-      {canUpload(role) && (
-        <div className="panel">
-          <p>Выгрузка из 1С: «Поступление товаров и услуг» по строкам за 6–12 месяцев, Excel или CSV.</p>
-          <input type="file" accept=".xlsx,.xlsm,.csv" disabled={send.isPending}
-                 onChange={(e) => e.target.files?.[0] && send.mutate(e.target.files[0])} />
-          {send.isPending && <Loading label="Читаем файл…" />}
-          {send.error && <ErrorNote error={send.error} />}
-          {upload && <Preview upload={upload} onStart={() => start.mutate(upload.id)} starting={start.isPending} />}
-          {start.error && <ErrorNote error={start.error} />}
+    <div className="columns-step">
+      <div className="filecard">
+        <Icon name="sheet" size={22} />
+        <div className="filecard-main">
+          <span className="filecard-name">{upload.filename}</span>
+          <span className="muted small">
+            {fileSize(upload.size)} · {p.header_row ? `заголовок в строке ${p.header_row}` : "заголовок не найден"} · {count(p.data_rows ?? 0, LINES)} ·{" "}
+            {columns.length} колонок
+          </span>
+        </div>
+        <button type="button" className="btn btn-link" onClick={onReplace}>
+          Заменить файл
+        </button>
+      </div>
+
+      {!p.header_row && (
+        <Notice>
+          Не нашли строку с заголовками.{" "}
+          <label className="inline-select">
+            Заголовки в строке
+            <select value={headerRow} onChange={(e) => setHeaderRow(Number(e.target.value))}>
+              <option value={0}>выберите…</option>
+              {p.sample.map((r, i) => (
+                <option key={i} value={i + 1}>
+                  {i + 1}: {r.filter(Boolean).slice(0, 3).join(" · ").slice(0, 60)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </Notice>
+      )}
+      {p.header_row > 0 && missing.length > 0 && (
+        <Notice>
+          Файл прочитан, но не нашли: {missing.map((m) => m.label.toLowerCase()).join(", ")}. Укажите колонки в таблице ниже.
+        </Notice>
+      )}
+
+      {columns.length > 0 && (
+        <div>
+          <p className="muted small">Первые строки файла. Над каждой колонкой — что мы в ней нашли.</p>
+          <div className="mapper" role="table" aria-label="Сопоставление колонок">
+            {columns.map((name, col) => {
+              const field = byCol[col] ?? "";
+              return (
+                <div key={col} className={`mcol${field ? "" : " mcol-free"}`} role="rowgroup">
+                  <div className="mcol-head">
+                    <label className="mselect">
+                      <span>{field ? LABEL[field] : "—"}</span>
+                      <Icon name="down" size={14} strokeWidth={2} />
+                      <select aria-label={`Колонка «${name || col + 1}»`} value={field} onChange={(e) => assign(col, e.target.value)}>
+                        <option value="">— не использовать</option>
+                        {FIELDS.map((f) => (
+                          <option key={f.key} value={f.key}>
+                            {f.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <span className="mcol-name">{name || `колонка ${col + 1}`}</span>
+                  </div>
+                  {rows.map((r, i) => (
+                    <div key={i} className="mcell" title={r[col] ?? ""}>
+                      {r[col] ?? ""}
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
-      {activeRun && <Progress runId={activeRun} onDone={refreshRuns} />}
-      <h3>Проверки</h3>
-      {runs.isPending ? <Loading /> : runs.isError ? <ErrorNote error={runs.error} /> : runs.data.items.length === 0 ? (
-        <Empty title="Проверок пока нет" />
+
+      <div className="required">
+        <div className="required-list">
+          <span className="required-title">Обязательные поля</span>
+          {REQUIRED.map((r) => {
+            const ok = r.ok(mapping);
+            return (
+              <span key={r.label} className={`req req-${ok ? "ok" : "miss"}`}>
+                <span className="req-dot">{ok ? <Icon name="check" size={11} strokeWidth={3.5} /> : "!"}</span>
+                {r.label}
+              </span>
+            );
+          })}
+        </div>
+        <div className="required-go">
+          <button type="button" className="btn btn-primary btn-lg" disabled={missing.length > 0 || start.isPending} onClick={() => start.mutate()}>
+            {start.isPending ? "Ставим в очередь…" : "Колонки верны — проверить закупки"}
+          </button>
+          <span className="muted small">
+            {missing.length ? `Укажите: ${missing.map((m) => m.label.toLowerCase()).join(", ")}. ` : ""}Проверка идёт в фоне 5–60 секунд.
+          </span>
+        </div>
+      </div>
+      {start.error && <ErrorNote error={start.error} />}
+    </div>
+  );
+}
+
+function CheckStep({ runId, onAgain }: { runId: string; onAgain: () => void }) {
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const { select } = useCurrentRun();
+  const [ev, setEv] = useState<{ status: string; progress: number; error?: string | null }>({ status: "queued", progress: 0 });
+  const [lastStage, setLastStage] = useState("queued");
+  const run = useQuery({
+    queryKey: ["run", runId],
+    enabled: TERMINAL.includes(ev.status),
+    queryFn: () => unwrap(api.GET("/api/audits/{run_id}", { params: { path: { run_id: runId } } })),
+  });
+  const [attempt, setAttempt] = useState(0);
+  const retry = useMutation({
+    mutationFn: () => unwrap(api.POST("/api/audits/{run_id}/retry", { params: { path: { run_id: runId } } })),
+    onSuccess: () => {
+      setEv({ status: "queued", progress: 0 });
+      setAttempt((a) => a + 1);
+    },
+  });
+
+  // первое событие — состояние из БД, дальше — смена стадий до done/failed
+  useEffect(() => {
+    const es = new EventSource(`/api/audits/${runId}/events`, { withCredentials: true });
+    es.addEventListener("progress", (e) => {
+      const data = JSON.parse((e as MessageEvent).data) as { status: string; progress: number; error?: string | null };
+      setEv(data);
+      if (!TERMINAL.includes(data.status)) setLastStage(data.status);
+      if (TERMINAL.includes(data.status)) {
+        es.close();
+        qc.invalidateQueries({ queryKey: ["runs"] });
+        qc.invalidateQueries({ queryKey: ["run", runId] });
+      }
+    });
+    return () => es.close();
+  }, [runId, attempt, qc]);
+
+  const r = run.data;
+  const share = r
+    ? `https://wa.me/?text=${encodeURIComponent(
+        `Проверка закупок готова: возможная переплата ${moneyShort(r.overpayment)}, вопросов ${r.findings_count}. ${window.location.origin}/`,
+      )}`
+    : "#";
+  return (
+    <div className="check-step">
+      <div className="panel">
+        <StageProgress status={ev.status} progress={ev.progress} failedAt={lastStage} />
+        {ev.status === "failed" && (
+          <>
+            <p className="inline-error">
+              <Icon name="alert" size={18} strokeWidth={2} />
+              {ev.error ?? r?.error ?? "Проверка остановилась"}
+            </p>
+            <div className="actions">
+              <button type="button" className="btn btn-primary" onClick={() => retry.mutate()} disabled={retry.isPending}>
+                Запустить ещё раз
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={onAgain}>
+                Заменить файл
+              </button>
+            </div>
+          </>
+        )}
+        {ev.status === "done" && r && (
+          <>
+            <p className="result">
+              Проверено {count(r.lines_total, LINES)} · {count(r.findings_count, QUESTIONS)} · возможная переплата{" "}
+              <strong className="over">{moneyShort(r.overpayment)}</strong>
+            </p>
+            <div className="actions">
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  select(r.id);
+                  navigate("/");
+                }}
+              >
+                Открыть сводку
+              </button>
+              <a className="btn btn-secondary" href={share} target="_blank" rel="noreferrer">
+                Отправить собственнику
+              </a>
+              <button type="button" className="btn btn-link" onClick={onAgain}>
+                Загрузить ещё файл
+              </button>
+            </div>
+          </>
+        )}
+        {!TERMINAL.includes(ev.status) && <p className="muted small">Проверка идёт в фоне: страницу можно закрыть, результат появится в списке.</p>}
+      </div>
+    </div>
+  );
+}
+
+function PastRuns({ runs, loading, error }: { runs?: Run[]; loading: boolean; error: unknown }) {
+  const navigate = useNavigate();
+  const { select } = useCurrentRun();
+  const open = (r: Run) => {
+    if (r.status !== "done") return;
+    select(r.id);
+    navigate("/");
+  };
+  return (
+    <section className="block">
+      <h2 className="block-title">Прошлые проверки</h2>
+      {loading ? (
+        <Skeleton lines={3} />
+      ) : error ? (
+        <ErrorNote error={error} />
+      ) : !runs?.length ? (
+        <Empty title="Проверок пока нет">Первая проверка появится здесь, как только вы загрузите выгрузку.</Empty>
       ) : (
-        <table className="table">
-          <thead>
-            <tr><th>Файл</th><th>Период</th><th>Статус</th><th className="num">Закупки</th><th className="num">Переплата</th></tr>
-          </thead>
-          <tbody>
-            {runs.data.items.map((r: Run) => (
-              <tr key={r.id}>
-                <td>{r.filename}</td>
-                <td>{date(r.period_start)} — {date(r.period_end)}</td>
-                <td>{RUN_STAGE[r.status]}{r.error && <span className="error"> · {r.error}</span>}</td>
-                <td className="num">{money(r.spend)}</td>
-                <td className="num">{r.status === "done" ? <Link to={`/findings?run=${r.id}`}>{money(r.overpayment)}</Link> : "—"}</td>
+        <div className="table-wrap">
+          <table className="table runs">
+            <thead>
+              <tr>
+                <th>Файл</th>
+                <th>Период</th>
+                <th>Когда</th>
+                <th>Статус</th>
+                <th className="r">Закупки</th>
+                <th className="r">Переплата</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {runs.map((r) => (
+                <tr key={r.id} className={r.status === "done" ? "clickable" : ""} onClick={() => open(r)}>
+                  <td className="ellipsis" title={r.filename}>
+                    {r.status === "done" ? (
+                      <a
+                        href="/"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          open(r);
+                        }}
+                      >
+                        {r.filename}
+                      </a>
+                    ) : (
+                      r.filename
+                    )}
+                  </td>
+                  <td className="num">{r.period_start ? `${date(r.period_start)} — ${date(r.period_end)}` : "—"}</td>
+                  <td className="num muted">{dayTime(r.created_at)}</td>
+                  <td className={r.status === "failed" ? "err" : ""}>{RUN_STATUS[r.status] ?? r.status}</td>
+                  <td className="r num">{r.status === "done" ? int(r.spend) : "—"}</td>
+                  <td className="r num over">{r.status === "done" ? int(r.overpayment) : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   );
 }
 
-function Preview({ upload, onStart, starting }: { upload: Upload; onStart: () => void; starting: boolean }) {
-  const p = upload.preview;
-  const byIndex = Object.fromEntries(Object.entries(p.mapping).map(([field, i]) => [i, field]));
-  return (
-    <div className="preview">
-      <p>
-        <strong>{upload.filename}</strong> — шапка в строке {p.header_row || "не найдена"}.
-        {p.missing.length > 0 && <span className="error"> Не нашли колонки: {p.missing.map((f) => FIELD_LABEL[f] ?? f).join(", ")}.</span>}
-      </p>
-      <div className="scroll">
-        <table className="table compact">
-          <thead>
-            <tr>{p.columns.map((c, i) => <th key={i}>{c}<br /><small className="muted">{FIELD_LABEL[byIndex[i] ?? ""] ?? "—"}</small></th>)}</tr>
-          </thead>
-          <tbody>
-            {p.sample.slice(0, 5).map((row, i) => <tr key={i}>{row.map((c, j) => <td key={j}>{c}</td>)}</tr>)}
-          </tbody>
-        </table>
-      </div>
-      <button className="primary" disabled={starting || p.missing.length > 0} onClick={onStart}>
-        {starting ? "Ставим в очередь…" : "Колонки верны — проверить закупки"}
-      </button>
-    </div>
-  );
-}
-
-// Прогресс по SSE: первое событие — текущее состояние, дальше — смена стадий до done/failed
-function Progress({ runId, onDone }: { runId: string; onDone: () => void }) {
-  const [state, setState] = useState<{ status: string; progress: number; error?: string | null }>({
-    status: "queued", progress: 0,
-  });
-  useEffect(() => {
-    const es = new EventSource(`/api/audits/${runId}/events`, { withCredentials: true });
-    es.addEventListener("progress", (e) => {
-      const data = JSON.parse((e as MessageEvent).data);
-      setState(data);
-      if (data.status === "done" || data.status === "failed") {
-        es.close();
-        onDone();
-      }
-    });
-    return () => es.close();
-  }, [runId, onDone]);
-  return (
-    <div className="panel" aria-live="polite">
-      <p>{RUN_STAGE[state.status] ?? state.status} · {state.progress}%</p>
-      <progress max={100} value={state.progress} />
-      {state.error && <p className="error">{state.error}</p>}
-      {state.status === "done" && <Link to={`/findings?run=${runId}`}>Смотреть вопросы →</Link>}
-    </div>
-  );
-}
+const RUN_STATUS: Record<string, string> = {
+  queued: "В очереди",
+  importing: "Читаем файл",
+  normalizing: "Сводим номенклатуру",
+  analyzing: "Сравниваем цены",
+  reporting: "Готовим отчёт",
+  done: "Готово",
+  failed: "Ошибка",
+};
