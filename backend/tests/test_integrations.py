@@ -79,6 +79,14 @@ async def test_token_lifecycle_and_permissions(org, as_user, app):
         ).status_code == 401
 
 
+async def test_capabilities(org, as_user):
+    acc = await as_user("acc@t.kg")
+    caps = (await acc.get("/api/integrations/capabilities")).json()
+    assert caps["secrets"] is True and caps["llm"] is False
+    buyer = await as_user("buyer@t.kg")
+    assert (await buyer.get("/api/integrations/capabilities")).status_code == 403
+
+
 async def test_push_from_1c_runs_audit(token, as_user, app):
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as raw:
         h = {"Authorization": f"Bearer {token['token']}"}

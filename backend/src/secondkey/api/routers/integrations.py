@@ -199,6 +199,19 @@ async def sync(connection_id: uuid.UUID, body: SyncIn, session: Session, member:
     return {"status": "queued"}
 
 
+@router.get("/capabilities")
+async def capabilities(member: Member = require(*UPLOAD)) -> dict[str, bool | str]:
+    """Что настроено на сервере: можно ли хранить пароли 1С (SK_DATA_KEY) и включён ли ИИ (SK_LLM_API_KEY)."""
+    from secondkey import llm
+    from secondkey.config import settings
+
+    return {
+        "secrets": bool(settings.data_key.get_secret_value()),
+        "llm": llm.enabled(),
+        "public_url": settings.public_url,
+    }
+
+
 @router.get("/profiles")
 async def profiles(member: Member = require(*UPLOAD)) -> list[dict]:
     return svc.PROFILE_CHOICES

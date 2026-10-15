@@ -27,7 +27,7 @@ export function OverviewPage() {
   const navigate = useNavigate();
   const running = runs.find((r) => r.status !== "done" && r.status !== "failed");
 
-  if (loading) return <Skeleton lines={6} />;
+  if (loading) return <Skeleton variant="overview" />;
   if (!run)
     return (
       <section className="page">
@@ -58,7 +58,7 @@ export function OverviewPage() {
         )}
       </section>
     );
-  if (summary.isPending) return <Skeleton lines={6} />;
+  if (summary.isPending) return <Skeleton variant="overview" />;
   if (summary.isError) return <ErrorNote error={summary.error} retry={() => summary.refetch()} />;
 
   const s = summary.data;

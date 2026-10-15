@@ -199,6 +199,42 @@ export function PriceChart({
   const tipRight = tipLeft > width * 0.55;
   const refAt = (t: number) => reference ?? market.byMonth.get(monthKey(t)) ?? null;
 
+  // подсказка: на десктопе — у курсора, на узком экране — панелью под графиком
+  const dock = width < 560;
+  const tip = hoverT !== undefined ? (
+    <>
+        <span className="ch-tip-date">{date(new Date(hoverT).toISOString().slice(0, 10))}</span>
+        {[...series].reverse().map((s) => {
+          const p = near(s, hoverT);
+          if (!p) return null;
+          const over = p.line_id && lineIds.has(p.line_id) && Number(p.overpayment) > 0 ? Number(p.overpayment) : 0;
+          return (
+            <span key={s.name} className="ch-tip-row">
+              <i style={{ background: s.color }} />
+              <strong>{int(p.price)}</strong>
+              <span>
+                {s.name}
+                {p.qty ? ` · ${qty(p.qty)} ${u}` : ""}
+                {over ? ` · переплата ${int(over)} сом` : ""}
+              </span>
+            </span>
+          );
+        })}
+        {market.byMonth.get(monthKey(hoverT)) !== undefined && (
+          <span className="ch-tip-row">
+            <i className="ch-tip-market" />
+            <strong>{int(market.byMonth.get(monthKey(hoverT))!)}</strong>
+            <span>рынок, медиана месяца</span>
+          </span>
+        )}
+        {(() => {
+          const s = series.find((x) => x.question);
+          const p = s && near(s, hoverT);
+          return p?.ref ? <span className="mono ch-tip-doc">Поступление {docNumber(p.ref)}</span> : null;
+        })()}
+    </>
+  ) : null;
+
   return (
     <figure className="chart">
       {hasQuestionRange && (
@@ -219,7 +255,7 @@ export function PriceChart({
         aria-label={`${summary} Стрелки влево и вправо — по датам покупок.`}
         onPointerMove={onMove}
         onPointerDown={onMove}
-        onPointerLeave={() => setHover(null)}
+        onPointerLeave={(e) => e.pointerType !== "touch" && setHover(null)} // на касании «уход» приходит сразу после отпускания пальца
         onKeyDown={onKey}
         onBlur={() => setHover(null)}
       >
@@ -286,40 +322,17 @@ export function PriceChart({
             ))}
           {hoverT !== undefined && <line x1={X(hoverT)} x2={X(hoverT)} y1={T} y2={T + ph} className="ch-cross" />}
         </svg>
-        {hoverT !== undefined && (
+        {tip && !dock && (
           <div className="ch-tip" style={tipRight ? { right: width - tipLeft + 12 } : { left: tipLeft + 12 }}>
-            <span className="ch-tip-date">{date(new Date(hoverT).toISOString().slice(0, 10))}</span>
-            {[...series].reverse().map((s) => {
-              const p = near(s, hoverT);
-              if (!p) return null;
-              const over = p.line_id && lineIds.has(p.line_id) && Number(p.overpayment) > 0 ? Number(p.overpayment) : 0;
-              return (
-                <span key={s.name} className="ch-tip-row">
-                  <i style={{ background: s.color }} />
-                  <strong>{int(p.price)}</strong>
-                  <span>
-                    {s.name}
-                    {p.qty ? ` · ${qty(p.qty)} ${u}` : ""}
-                    {over ? ` · переплата ${int(over)} сом` : ""}
-                  </span>
-                </span>
-              );
-            })}
-            {market.byMonth.get(monthKey(hoverT)) !== undefined && (
-              <span className="ch-tip-row">
-                <i className="ch-tip-market" />
-                <strong>{int(market.byMonth.get(monthKey(hoverT))!)}</strong>
-                <span>рынок, медиана месяца</span>
-              </span>
-            )}
-            {(() => {
-              const s = series.find((x) => x.question);
-              const p = s && near(s, hoverT);
-              return p?.ref ? <span className="mono ch-tip-doc">Поступление {docNumber(p.ref)}</span> : null;
-            })()}
+            {tip}
           </div>
         )}
       </div>
+      {tip && dock && (
+        <div className="ch-tip ch-tip-dock" role="status">
+          {tip}
+        </div>
+      )}
       <figcaption className="legend">
         <span className="lg-caption">сом за {u}</span>
         {series

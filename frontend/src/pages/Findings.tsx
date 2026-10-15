@@ -9,7 +9,7 @@ import { RunPicker } from "../components/RunPicker";
 import { Empty, ErrorNote, Skeleton } from "../components/State";
 import { QUESTIONS, count, moneyShort } from "../format";
 import { DECIDED, RULE_TEXT, WAITING } from "../questions";
-import { canSeeAll, useCurrentRun, useRole, useRunFindings } from "../session";
+import { canSeeAll, useCurrentRun, useMe, useRole, useRunFindings } from "../session";
 import { MobileHead } from "./Layout";
 
 const TABS: { key: string; label: string; status: FindingStatus[] }[] = [
@@ -131,7 +131,7 @@ function Inbox() {
       </div>
 
       {loading || q.isPending ? (
-        <Skeleton lines={8} />
+        <Skeleton variant="list" lines={8} />
       ) : q.isError ? (
         <ErrorNote error={q.error} retry={() => q.refetch()} />
       ) : !run ? (
@@ -162,6 +162,9 @@ function Inbox() {
         )
       ) : (
         <>
+          {all.length >= 200 && (
+            <p className="note note-accent">Показаны 200 крупнейших вопросов проверки — остальные мельче; сузьте фильтром по правилу или поставщику.</p>
+          )}
           <p className="list-note">
             Сначала крупные · {shown.length} из {all.length}
             {anyFilter ? " по фильтру" : ""}
@@ -180,6 +183,7 @@ function Inbox() {
 
 function MyQuestions() {
   const { run, loading } = useCurrentRun();
+  const alias = useMe().data?.memberships[0]?.alias;
   const q = useRunFindings(run?.id);
   const items = q.data ?? [];
   const groups: { title: string; items: Finding[] }[] = [
@@ -199,8 +203,13 @@ function MyQuestions() {
         Система сравнивает цены автоматически. Здесь — вопросы по вашим закупкам: объясните, почему цена такая, — решение
         примет собственник.
       </p>
-      {loading || q.isPending ? (
-        <Skeleton lines={6} />
+      {!alias ? (
+        <Empty title="Вы не привязаны к имени в 1С">
+          Вопросы приходят по закупкам, где вы указаны ответственным. Попросите собственника открыть «Настройки → Люди и
+          роли» и указать, как вы записаны в 1С — например, «Асанов Б.».
+        </Empty>
+      ) : loading || q.isPending ? (
+        <Skeleton variant="list" lines={5} />
       ) : q.isError ? (
         <ErrorNote error={q.error} retry={() => q.refetch()} />
       ) : items.length === 0 ? (

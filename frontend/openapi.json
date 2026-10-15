@@ -2302,6 +2302,68 @@
         }
       }
     },
+    "/api/integrations/capabilities": {
+      "get": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "Capabilities",
+        "description": "Что настроено на сервере: можно ли хранить пароли 1С (SK_DATA_KEY) и включён ли ИИ (SK_LLM_API_KEY).",
+        "operationId": "capabilities_api_integrations_capabilities_get",
+        "parameters": [
+          {
+            "name": "x-org-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "title": "Response Capabilities Api Integrations Capabilities Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/integrations/profiles": {
       "get": {
         "tags": [

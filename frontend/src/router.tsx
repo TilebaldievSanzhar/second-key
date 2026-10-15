@@ -6,6 +6,7 @@ import { FindingsPage } from "./pages/Findings";
 import { FindingPage } from "./pages/Finding";
 import { UploadsPage } from "./pages/Uploads";
 import { SettingsPage } from "./pages/Settings";
+import { NotFoundPage } from "./pages/NotFound";
 
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
@@ -18,6 +19,7 @@ export const router = createBrowserRouter([
       { path: "findings/:id", element: <FindingPage /> },
       { path: "uploads", element: <UploadsPage /> },
       { path: "settings", element: <SettingsPage /> },
+      { path: "*", element: <NotFoundPage /> },
     ],
   },
 ]);

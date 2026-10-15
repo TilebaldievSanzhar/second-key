@@ -8,7 +8,7 @@ import { useToast } from "../components/Toast";
 import { int } from "../format";
 import { ROLE_TEXT, canDecide, canUpload, useRole } from "../session";
 import { MobileHead } from "./Layout";
-import { OneCSection } from "./SettingsOneC";
+import { AISection, OneCSection } from "./SettingsOneC";
 
 export function SettingsPage() {
   const role = useRole();
@@ -32,6 +32,7 @@ export function SettingsPage() {
       {org.isPending ? <Skeleton lines={5} /> : org.isError ? <ErrorNote error={org.error} /> : <Thresholds org={org.data} />}
       <People />
       {canUpload(role) && <OneCSection />}
+      {canUpload(role) && <AISection />}
     </section>
   );
 }

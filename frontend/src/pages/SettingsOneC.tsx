@@ -97,6 +97,8 @@ function Tokens() {
       )}
       {list.isPending ? (
         <Skeleton lines={2} />
+      ) : list.data && list.data.length === 0 ? (
+        <p className="muted small">Токенов пока нет — создайте первый: для обработки 1С или для ИИ-агента.</p>
       ) : list.data && list.data.length > 0 ? (
         <div className="table-wrap">
           <table className="table">
@@ -157,7 +159,13 @@ function ModuleInfo() {
 
 const EMPTY = { name: "1С: Бухгалтерия", base_url: "", username: "", password: "", profile: "bp30" as "bp30" | "ut11", period_days: 90, schedule: "manual" as "manual" | "daily" };
 
+export function useCapabilities() {
+  return useQuery({ queryKey: ["capabilities"], queryFn: () => unwrap(api.GET("/api/integrations/capabilities")) });
+}
+
 function Connections() {
+  const caps = useCapabilities();
+  const noSecrets = caps.data?.secrets === false;
   const qc = useQueryClient();
   const toast = useToast();
   const list = useQuery({ queryKey: ["connections"], queryFn: () => unwrap(api.GET("/api/integrations/connections")) });
@@ -215,7 +223,7 @@ function Connections() {
       <div className="block-head">
         <h3 className="panel-title">OData: «Второй ключ» забирает документы сам</h3>
         {!open && (
-          <button type="button" className="btn btn-secondary" onClick={() => { setOpen(true); setEditing(null); setForm(EMPTY); }}>
+          <button type="button" className="btn btn-secondary" disabled={noSecrets} onClick={() => { setOpen(true); setEditing(null); setForm(EMPTY); }}>
             Добавить подключение
           </button>
         )}
@@ -224,6 +232,12 @@ function Connections() {
         Для опубликованной базы (веб-сервер, 1С:Fresh, облако). В публикации OData включите документ поступления и справочники
         контрагентов, номенклатуры, единиц, складов и пользователей; заведите пользователя только с правом чтения.
       </p>
+      {noSecrets && (
+        <Notice>
+          Сохранять пароли 1С пока нельзя: на сервере не задан ключ шифрования (SK_DATA_KEY). Попросите администратора
+          сервиса добавить его, а до этого используйте обработку выгрузки — ей пароль не нужен.
+        </Notice>
+      )}
       {open && (
         <form
           className="settings"
@@ -283,6 +297,8 @@ function Connections() {
       )}
       {list.isPending ? (
         <Skeleton lines={2} />
+      ) : list.data && list.data.length === 0 && !open ? (
+        <p className="muted small">Подключений пока нет.</p>
       ) : list.data && list.data.length > 0 ? (
         <ul className="conn-list">
           {list.data.map((c) => (
@@ -311,5 +327,29 @@ function Connections() {
         </ul>
       ) : null}
     </div>
+  );
+}
+
+// ИИ-подсказки: что включено на сервере и что без них
+export function AISection() {
+  const caps = useCapabilities();
+  if (!caps.data) return null;
+  return (
+    <section className="block">
+      <h2 className="block-title">ИИ-подсказки</h2>
+      <div className="panel">
+        {caps.data.llm ? (
+          <p>
+            Включены: ИИ предлагает сопоставление колонок для нестандартных выгрузок, распознаёт номенклатуру, которую не поняли
+            правила, проверяет ответы снабжения и пишет текст для WhatsApp. Суммы и решения — всегда за системой и людьми.
+          </p>
+        ) : (
+          <p>
+            Выключены: колонки и номенклатура распознаются правилами, текст для WhatsApp собирается по шаблону. Включает
+            администратор сервиса (ключ SK_LLM_API_KEY).
+          </p>
+        )}
+      </div>
+    </section>
   );
 }

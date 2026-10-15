@@ -1,7 +1,7 @@
 // Возможная переплата по месяцам, столбцы разбиты по правилам (строка — правилу с наибольшим вкладом).
 // Палитра правил проверена validate_palette.js (соседние пары в стопке, поверхность #FDFDFB).
 // Подпись — только у максимального месяца; остальное — ось, подсказка и скрытая таблица для скринридеров.
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import type { Schemas } from "../api/client";
 import { MONTHS, int, moneyShort, pct } from "../format";
 import { RULE_TEXT } from "../questions";
@@ -56,6 +56,13 @@ export function TimelineChart({ months, height = 220 }: { months: Month[]; heigh
   const peak = totals.indexOf(Math.max(...totals));
   const step = slot < 34 ? 2 : 1;
 
+  // столбец под указателем — по координате: мышь, перо и палец ведут себя одинаково
+  const pick = (e: PointerEvent<HTMLDivElement>) => {
+    const x = e.clientX - e.currentTarget.getBoundingClientRect().left - 8; // 8 — внутренний отступ .chart-plot
+    const i = Math.floor((x - L) / slot);
+    if (i >= 0 && i < months.length) setActive(i);
+  };
+
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key === "ArrowRight") setActive((a) => Math.min((a ?? -1) + 1, months.length - 1));
     else if (e.key === "ArrowLeft") setActive((a) => Math.max((a ?? months.length) - 1, 0));
@@ -65,6 +72,30 @@ export function TimelineChart({ months, height = 220 }: { months: Month[]; heigh
   };
 
   const m = active !== null ? months[active] : undefined;
+  // подсказка: на десктопе — у курсора, на узком экране — панелью под графиком
+  const dock = width < 560;
+  const tip = m ? (
+    <>
+        <span className="ch-tip-date">{label(m.month)}</span>
+        <span className="ch-tip-row">
+          <strong>{moneyShort(m.overpayment)}</strong>
+          <span>возможная переплата · {pct(m.overpayment, m.spend)} закупок месяца</span>
+        </span>
+        {used.map((r) =>
+          Number(m.by_rule[r.code] ?? 0) > 0 ? (
+            <span key={r.code} className="ch-tip-row">
+              <i style={{ background: r.color }} />
+              <strong>{int(m.by_rule[r.code])}</strong>
+              <span>{RULE_TEXT[r.code]}</span>
+            </span>
+          ) : null,
+        )}
+        <span className="ch-tip-doc">
+          {m.flagged_lines} из {m.lines} строк с переплатой · закупки {moneyShort(m.spend)}
+        </span>
+    </>
+  ) : null;
+
   return (
     <figure className="chart">
       <figcaption className="legend legend-top">
@@ -86,7 +117,9 @@ export function TimelineChart({ months, height = 220 }: { months: Month[]; heigh
         role="group"
         aria-label="Возможная переплата по месяцам. Стрелки влево и вправо — по месяцам."
         onKeyDown={onKey}
-        onPointerLeave={() => setActive(null)}
+        onPointerMove={pick}
+        onPointerDown={pick}
+        onPointerLeave={(e) => e.pointerType !== "touch" && setActive(null)} // на касании «уход» приходит сразу после отпускания пальца
         onBlur={() => setActive(null)}
       >
         <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
@@ -133,34 +166,24 @@ export function TimelineChart({ months, height = 220 }: { months: Month[]; heigh
                     {label(mo.month)}
                   </text>
                 )}
-                <rect x={L + slot * i} y={T} width={slot} height={ph} className="ch-hit" onPointerEnter={() => setActive(i)} onPointerDown={() => setActive(i)} />
               </g>
             );
           })}
         </svg>
-        {m && (
+        {tip && !dock && (
           <div className="ch-tip" style={(active ?? 0) > months.length / 2 ? { right: width - (L + slot * active! + slot / 2) + 14 } : { left: L + slot * active! + slot / 2 + 14 }}>
-            <span className="ch-tip-date">{label(m.month)}</span>
-            <span className="ch-tip-row">
-              <strong>{moneyShort(m.overpayment)}</strong>
-              <span>возможная переплата · {pct(m.overpayment, m.spend)} закупок месяца</span>
-            </span>
-            {used.map((r) =>
-              Number(m.by_rule[r.code] ?? 0) > 0 ? (
-                <span key={r.code} className="ch-tip-row">
-                  <i style={{ background: r.color }} />
-                  <strong>{int(m.by_rule[r.code])}</strong>
-                  <span>{RULE_TEXT[r.code]}</span>
-                </span>
-              ) : null,
-            )}
-            <span className="ch-tip-doc">
-              {m.flagged_lines} из {m.lines} строк с переплатой · закупки {moneyShort(m.spend)}
-            </span>
+            {tip}
           </div>
         )}
       </div>
-      <table className="sr-only">
+      {tip && dock && (
+        <div className="ch-tip ch-tip-dock" role="status">
+          {tip}
+        </div>
+      )}
+      {/* таблица шире 1 px не сжимается — прячем блок-обёртку, а не саму таблицу */}
+      <div className="sr-only">
+      <table>
         <caption>Возможная переплата по месяцам, сом</caption>
         <thead>
           <tr>
@@ -185,6 +208,7 @@ export function TimelineChart({ months, height = 220 }: { months: Month[]; heigh
           ))}
         </tbody>
       </table>
+      </div>
     </figure>
   );
 }

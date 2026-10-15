@@ -4,13 +4,65 @@ import { Icon } from "./Icon";
 
 // Пустые, загрузочные и ошибочные состояния — часть интерфейса, а не заглушки
 
-/** Скелет вместо спиннера: форма будущего содержимого. */
-export function Skeleton({ lines = 4, label = "Загружаем…" }: { lines?: number; label?: string }) {
+/** Скелет вместо спиннера: форма будущего содержимого. variant — по экрану. */
+export function Skeleton({
+  lines = 4,
+  label = "Загружаем…",
+  variant = "text",
+}: {
+  lines?: number;
+  label?: string;
+  variant?: "text" | "overview" | "list" | "card";
+}) {
+  if (variant === "overview")
+    return (
+      <div className="skeleton" role="status" aria-label={label}>
+        <span className="sk sk-meta" />
+        <div className="sk-hero">
+          <span className="sk sk-label" />
+          <span className="sk sk-hero-num" />
+          <span className="sk sk-meta" />
+          <span className="sk sk-btn" />
+        </div>
+        <SkRows n={3} />
+      </div>
+    );
+  if (variant === "list")
+    return (
+      <div className="skeleton" role="status" aria-label={label}>
+        <SkRows n={lines} />
+      </div>
+    );
+  if (variant === "card")
+    return (
+      <div className="skeleton" role="status" aria-label={label}>
+        <span className="sk sk-meta" />
+        <span className="sk sk-title" />
+        <span className="sk sk-title" style={{ width: "60%" }} />
+        <span className="sk sk-hero-num" style={{ width: "40%" }} />
+        <span className="sk sk-chart" />
+        <SkRows n={3} />
+      </div>
+    );
   return (
     <div className="skeleton" role="status" aria-label={label}>
       <span className="sk sk-title" />
       {Array.from({ length: lines }, (_, i) => (
         <span key={i} className="sk" style={{ width: `${92 - ((i * 17) % 40)}%` }} />
+      ))}
+    </div>
+  );
+}
+
+function SkRows({ n }: { n: number }) {
+  return (
+    <div className="sk-rows">
+      {Array.from({ length: n }, (_, i) => (
+        <div key={i} className="sk-row">
+          <span className="sk" style={{ width: `${80 - ((i * 13) % 30)}%` }} />
+          <span className="sk sk-amt" />
+          <span className="sk sk-meta" style={{ width: `${50 - ((i * 7) % 20)}%` }} />
+        </div>
       ))}
     </div>
   );

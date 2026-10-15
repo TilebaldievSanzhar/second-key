@@ -4,6 +4,7 @@ import { NavLink, Navigate, Outlet, useLocation, useMatch } from "react-router";
 import { api } from "../api/client";
 import { Icon, type IconName } from "../components/Icon";
 import { BrandMark } from "../components/RunPicker";
+import { ErrorBoundary, OfflineBar } from "../components/Resilience";
 import { Skeleton } from "../components/State";
 import { ToastProvider } from "../components/Toast";
 import { initials } from "../format";
@@ -71,7 +72,10 @@ export function Layout() {
             <UserBlock name={me.data.user.full_name} role={m ? ROLE_TEXT[m.role] : ""} org={m?.org.name ?? ""} />
           </aside>
           <main className="main" id="main">
-            <Outlet />
+            <OfflineBar />
+            <ErrorBoundary key={location.pathname}>
+              <Outlet />
+            </ErrorBoundary>
           </main>
           {seesAll && (
             <nav className="bottom-nav" aria-label="Разделы">

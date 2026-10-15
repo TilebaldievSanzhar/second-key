@@ -3,12 +3,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
-import { api, unwrap, type Finding, type FindingDetail, type FindingLine } from "../api/client";
+import { ApiError, api, unwrap, type Finding, type FindingDetail, type FindingLine } from "../api/client";
 import { Icon } from "../components/Icon";
 import { KeySeg, KeyStatus } from "../components/KeyPair";
 import { Money } from "../components/Money";
 import { PriceChart } from "../components/PriceChart";
-import { ErrorNote, Skeleton } from "../components/State";
+import { Empty, ErrorNote, Skeleton } from "../components/State";
 import { useToast } from "../components/Toast";
 import {
   LINES,
@@ -44,12 +44,20 @@ export function FindingPage() {
     queryKey: ["finding", id],
     queryFn: () => unwrap(api.GET("/api/findings/{finding_id}", { params: { path: { finding_id: id } } })),
   });
-  if (q.isPending) return <Skeleton lines={10} />;
+  if (q.isPending) return <Skeleton variant="card" />;
   if (q.isError)
     return (
       <section className="page">
-        <BackLink />
-        <ErrorNote error={q.error} retry={() => q.refetch()} />
+        <div className="card-top">
+          <BackLink />
+        </div>
+        {q.error instanceof ApiError && (q.error.status === 404 || q.error.status === 403) ? (
+          <Empty title="Вопрос не найден или у вас нет к нему доступа">
+            Возможно, его пересчитала новая проверка, или вопрос относится к закупкам другого сотрудника.
+          </Empty>
+        ) : (
+          <ErrorNote error={q.error} retry={() => q.refetch()} />
+        )}
       </section>
     );
   // key: состояние формы (комментарий, черновик ответа) не переезжает на следующий вопрос
