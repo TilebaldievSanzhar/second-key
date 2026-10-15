@@ -10,8 +10,8 @@
 | БД | PostgreSQL 17 (образ pgvector) | транзакции для денег, JSONB для доказательств, pgvector для будущего поиска по номенклатуре |
 | ORM и миграции | SQLAlchemy 2 (async, asyncpg) + Alembic | типизированные модели, миграции в репозитории |
 | Очередь | taskiq + Redis (ADR 0003) | async-воркеры, расписание, совместимость с FastAPI |
-| Файлы | S3-совместимое хранилище: MinIO локально, любой S3 в проде | выгрузки клиентов не лежат на диске API |
-| Прогресс задач | Redis pub/sub → Server-Sent Events | простой однонаправленный поток, работает через nginx |
+| Файлы | S3-совместимое хранилище: RustFS локально, любой S3 в проде | выгрузки клиентов не лежат на диске API; MinIO снят с Docker Hub (2026), RustFS — Apache-2.0, тот же S3 API |
+| Прогресс задач | Redis pub/sub → Server-Sent Events (нативный `EventSourceResponse` FastAPI) | простой однонаправленный поток, keep-alive, работает через nginx |
 | Аутентификация | email + пароль (argon2), JWT в httpOnly-cookie, роли в организации | B2B, вход по приглашению; токен недоступен JS |
 | Логи | structlog, JSON в проде, request_id | разбор инцидентов по одной строке |
 | Качество | ruff (линт и формат), pytest, pytest-asyncio | один инструмент для стиля |

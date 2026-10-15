@@ -13,36 +13,51 @@
 |---|---|
 | `backend/` | Python 3.13, FastAPI, SQLAlchemy 2 (async), Alembic, taskiq (Redis), движок аудита `secondkey.engine` |
 | `frontend/` | React 19 + TypeScript + Vite, TanStack Query; в проде — статика за nginx |
-| `compose.yaml` | Postgres 17, Redis 7, MinIO (S3), api, worker, scheduler, migrate, web |
+| `compose.yaml` | Postgres 17, Redis 7, RustFS (S3), migrate, api, worker, scheduler, web |
 | `docs/` | стратегия, план, ADR, архитектура, ТЗ на дизайн |
 
 ## Быстрый старт
 
 ```powershell
-Copy-Item .env.example .env            # заполнить секреты
+python scripts/make_env.py             # .env из .env.example со случайными секретами (или make env)
 docker compose up -d --build           # весь стек с hot reload (compose.override.yaml)
-docker compose run --rm api secondkey seed-demo   # организация, владелец и демо-аудит
-# интерфейс: http://localhost:5173   API: http://localhost:8000/docs   MinIO: http://localhost:9001
+docker compose run --rm api secondkey seed-demo   # демо-компания, пользователи, эталон рынка, аудит
 ```
 
-Продовый режим без hot reload и с nginx перед фронтом:
+| Что | Адрес |
+|---|---|
+| Интерфейс (Vite, hot reload) | http://localhost:5173 |
+| API и Swagger | http://localhost:8000/api/docs |
+| Консоль S3 (RustFS) | http://localhost:9001 — ключи `S3_ACCESS_KEY` / `S3_SECRET_KEY` из `.env` |
+
+Демо-пользователи (пароль `demo-demo-2026`): `owner@demo.kg` — собственник, `finance@demo.kg`,
+`accountant@demo.kg` — загружает выгрузки, `asanov@demo.kg` и `toktosunov@demo.kg` — снабжение
+(видят только вопросы по своим закупкам).
+
+Продовый режим без hot reload, наружу только nginx:
 
 ```powershell
 docker compose -f compose.yaml -f compose.prod.yaml up -d --build   # http://localhost:8080
 ```
+
+Обслуживание: `docker compose run --rm api secondkey --help` — `create-org`, `add-member`,
+`collect-market` (цены госзакупок КР), `fetch-fx` (курсы НБКР), `bench` (качество движка), `openapi`.
 
 ## Разработка без Docker
 
 ```powershell
 cd backend
 uv sync                                # venv + зависимости по uv.lock
-uv run pytest                          # тесты (SQLite, без внешних сервисов)
+uv run pytest                          # тесты, включая сквозной сценарий API (SQLite, без внешних сервисов)
+uv run secondkey bench                 # бенчмарк движка на синтетике; код 1 — качество ниже порога
 uv run ruff check . ; uv run ruff format --check .
 cd ..\frontend
 npm ci ; npm run dev                   # http://localhost:5173, /api проксируется на :8000
 ```
 
-Частые команды собраны в `Makefile` (`make up`, `make test`, `make lint`, `make migrate`).
+Частые команды собраны в `Makefile` (`make up`, `make seed`, `make test`, `make lint`, `make revision m=…`,
+`make api-types`). Новая миграция: `make revision m="что изменилось"`; типы фронта после изменения API:
+`make api-types` (CI проверяет, что схема и типы закоммичены).
 
 ## Происхождение кода
 
