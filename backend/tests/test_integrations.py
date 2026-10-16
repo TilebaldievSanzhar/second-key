@@ -126,14 +126,18 @@ async def test_mapping_is_remembered_for_same_report(org, as_user, tmp_path: Pat
 
 # --- 1С по OData на подставных ответах ------------------------------------------------------------
 
-DOC_KEY, SUP_KEY, ITEM_KEY, UNIT_KEY, WH_KEY, USER_KEY = (
-    f"0000000{i}-0000-0000-0000-000000000000" for i in range(1, 7)
+DOC_KEY, SUP_KEY, ITEM_KEY, UNIT_KEY, WH_KEY, USER_KEY, BANK_KEY = (
+    f"0000000{i}-0000-0000-0000-000000000000" for i in range(1, 8)
 )
 
 
-def odata_handler(request: httpx.Request) -> httpx.Response:
+def odata_handler(request: httpx.Request, optional: bool = True) -> httpx.Response:
+    """Подставная публикация OData; optional=False — в ней нет входящих номеров и контактов контрагента."""
     path = request.url.path
     assert request.headers["authorization"].startswith("Basic ")
+    query = str(request.url)
+    if not optional and ("НомерВходящегоДокумента" in query or "КонтактнаяИнформация" in query):
+        return httpx.Response(400, text="Неизвестное свойство")
     if path.endswith("$metadata"):
         return httpx.Response(
             200,
@@ -149,6 +153,11 @@ def odata_handler(request: httpx.Request) -> httpx.Response:
             "Склад_Key": WH_KEY,
             "Ответственный_Key": USER_KEY,
             "СуммаВключаетНДС": False,
+            **(
+                {"НомерВходящегоДокумента": "СФ-000417", "ДатаВходящегоДокумента": "2026-01-16T00:00:00"}
+                if optional
+                else {}
+            ),
             "Товары": [
                 {
                     "Номенклатура_Key": ITEM_KEY,
@@ -161,7 +170,23 @@ def odata_handler(request: httpx.Request) -> httpx.Response:
         }
         return httpx.Response(200, json={"value": [doc]})
     names = {
-        "Catalog_Контрагенты": {"Ref_Key": SUP_KEY, "Description": "ИП Сыдыков А.Т.", "ИНН": "20909197900124"},
+        "Catalog_Контрагенты": {
+            "Ref_Key": SUP_KEY,
+            "Description": "ИП Сыдыков А.Т.",
+            "ИНН": "20909197900124",
+            **(
+                {
+                    "КонтактнаяИнформация": [
+                        {"Тип": "Телефон", "Представление": "+996 555 41-27-09"},
+                        {"Тип": "Адрес", "Представление": "г. Бишкек, ул. Складская, 12"},
+                    ],
+                    "ОсновнойБанковскийСчет_Key": BANK_KEY,
+                }
+                if optional
+                else {}
+            ),
+        },
+        "Catalog_БанковскиеСчета": {"Ref_Key": BANK_KEY, "Description": "Основной", "НомерСчета": "1180000123456789"},
         "Catalog_Номенклатура": {
             "Ref_Key": ITEM_KEY,
             "Description": "Арматура А500С ф14",
@@ -198,8 +223,28 @@ async def test_odata_maps_documents_to_contract():
             "object": "ЖК «Ордо»",
             "responsible": "Асанов Б.",
             "ref": DOC_KEY,
+            "doc_in_no": "СФ-000417",
+            "doc_in_date": "2026-01-16",
         }
     ]  # в БП «Сумма» без НДС, если цена его не включает: в строку идёт сумма с НДС
+    assert c.supplier_cards == [
+        {
+            "name": "ИП Сыдыков А.Т.",
+            "inn": "20909197900124",
+            "phone": "+996 555 41-27-09",
+            "address": "г. Бишкек, ул. Складская, 12",
+            "bank_account": "1180000123456789",
+        }
+    ]
+
+
+async def test_odata_without_optional_fields_still_syncs():
+    """Входящих номеров и контактов в публикации нет — строки выгружаются без них."""
+    transport = httpx.MockTransport(lambda r: odata_handler(r, optional=False))
+    async with OneCOData("https://1c.example.kg/bp/", "audit", "secret", PROFILES["bp30"], transport=transport) as c:
+        lines = await c.purchases(date(2026, 1, 1), date(2026, 1, 31))
+    assert len(lines) == 1 and lines[0]["doc_in_no"] is None and lines[0]["supplier_inn"] == "20909197900124"
+    assert c.supplier_cards == []
 
 
 async def test_odata_connection_sync_creates_run(org, as_user):

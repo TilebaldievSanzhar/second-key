@@ -264,6 +264,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/audits/{run_id}/suppliers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Suppliers
+         * @description Досье поставщиков прогона: обороты, через кого покупали, ИНН, реквизиты, следы связок (engine/links.py).
+         */
+        get: operations["suppliers_api_audits__run_id__suppliers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/audits/{run_id}/lines": {
         parameters: {
             query?: never;
@@ -496,7 +516,7 @@ export interface paths {
         };
         /**
          * Ping
-         * @description Проверка связи из 1С: токен действителен.
+         * @description Проверка связи из 1С: токен действителен. inn_salt — соль для хэшей ИНН сотрудников (поле staff выгрузки).
          */
         get: operations["ping_api_integrations_ping_get"];
         put?: never;
@@ -952,6 +972,10 @@ export interface components {
             norm_note: string | null;
             /** Overpayment */
             overpayment: string;
+            /** Doc In No */
+            doc_in_no?: string | null;
+            /** Doc In Date */
+            doc_in_date?: string | null;
             /** Finding Overpayment */
             finding_overpayment: string;
         };
@@ -1076,6 +1100,10 @@ export interface components {
             norm_note: string | null;
             /** Overpayment */
             overpayment: string;
+            /** Doc In No */
+            doc_in_no?: string | null;
+            /** Doc In Date */
+            doc_in_date?: string | null;
         };
         /** LoginIn */
         LoginIn: {
@@ -1338,6 +1366,16 @@ export interface components {
              * @description Ссылка документа в источнике (GUID 1С)
              */
             ref?: string | null;
+            /**
+             * Doc In No
+             * @description Входящий номер: счёт/накладная поставщика
+             */
+            doc_in_no?: string | null;
+            /**
+             * Doc In Date
+             * @description Дата входящего документа
+             */
+            doc_in_date?: string | null;
         };
         /** PurchasesIn */
         PurchasesIn: {
@@ -1353,6 +1391,16 @@ export interface components {
             period_end?: string | null;
             /** Lines */
             lines: components["schemas"]["PurchaseIn"][];
+            /**
+             * Suppliers
+             * @default []
+             */
+            suppliers: components["schemas"]["SupplierIn"][];
+            /**
+             * Staff
+             * @default []
+             */
+            staff: components["schemas"]["StaffIn"][];
         };
         /**
          * Role
@@ -1444,6 +1492,24 @@ export interface components {
             /** By Material */
             by_material: components["schemas"]["BreakdownRow"][];
         };
+        /**
+         * StaffIn
+         * @description Сотрудник: ИНН — только хэшем SHA-256 от «соль:ИНН» (соль — в ответе /integrations/ping).
+         */
+        StaffIn: {
+            /**
+             * Name
+             * @description Как сотрудник записан в учёте
+             */
+            name: string;
+            /** Inn Hash */
+            inn_hash: string;
+            /**
+             * Role
+             * @description Должность: «прораб», «снабженец»
+             */
+            role?: string | null;
+        };
         /** SubmitOut */
         SubmitOut: {
             /**
@@ -1475,6 +1541,117 @@ export interface components {
              * @default
              */
             notes: string;
+        };
+        /** SupplierBuyer */
+        SupplierBuyer: {
+            /** Name */
+            name: string;
+            /** Spend */
+            spend: string;
+            /** Lines */
+            lines: number;
+        };
+        /** SupplierCardOut */
+        SupplierCardOut: {
+            /** Phone */
+            phone?: string | null;
+            /** Email */
+            email?: string | null;
+            /** Address */
+            address?: string | null;
+            /** Bank Account */
+            bank_account?: string | null;
+        };
+        /**
+         * SupplierIn
+         * @description Реквизиты поставщика из карточки контрагента: по ним видно «конкурентов» с одним владельцем.
+         */
+        SupplierIn: {
+            /**
+             * Name
+             * @description Как в строках закупок (supplier)
+             */
+            name: string;
+            /** Inn */
+            inn?: string | null;
+            /** Phone */
+            phone?: string | null;
+            /** Email */
+            email?: string | null;
+            /** Address */
+            address?: string | null;
+            /**
+             * Bank Account
+             * @description Основной расчётный счёт
+             */
+            bank_account?: string | null;
+        };
+        /**
+         * SupplierOut
+         * @description Досье поставщика за прогон: видят собственник и финансы.
+         */
+        SupplierOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Inn */
+            inn: string | null;
+            /** Inn Kind */
+            inn_kind: string | null;
+            /** Inn Date */
+            inn_date: string | null;
+            /** Spend */
+            spend: string;
+            /** Lines */
+            lines: number;
+            /** Share */
+            share: string;
+            /**
+             * First Date
+             * Format: date
+             */
+            first_date: string;
+            /**
+             * Last Date
+             * Format: date
+             */
+            last_date: string;
+            /** Skus */
+            skus: number;
+            /** Buyers */
+            buyers: components["schemas"]["SupplierBuyer"][];
+            card: components["schemas"]["SupplierCardOut"] | null;
+            /** Traces */
+            traces: components["schemas"]["SupplierTrace"][];
+            /** Linked */
+            linked: boolean;
+        };
+        /** SupplierTrace */
+        SupplierTrace: {
+            /** Code */
+            code: string;
+            /** Group */
+            group: string;
+            /** Text */
+            text: string;
+            /** Responsible */
+            responsible?: string | null;
+            /**
+             * Money
+             * @default 0
+             */
+            money: string;
+            /**
+             * Facts
+             * @default {}
+             */
+            facts: {
+                [key: string]: unknown;
+            };
         };
         /** SyncIn */
         SyncIn: {
@@ -2119,6 +2296,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RunSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suppliers_api_audits__run_id__suppliers_get: {
+        parameters: {
+            query?: {
+                linked?: boolean | null;
+                limit?: number;
+            };
+            header?: {
+                "x-org-id"?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupplierOut"][];
                 };
             };
             /** @description Validation Error */

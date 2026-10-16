@@ -27,6 +27,7 @@ DEMO_USERS = [  # email, имя, роль, как записан в учёте
     ("accountant@demo.kg", "Бурулай Кадырова", Role.accountant, None),
     ("asanov@demo.kg", "Бакыт Асанов", Role.buyer, "Асанов Б."),
     ("toktosunov@demo.kg", "Эрлан Токтосунов", Role.buyer, "Токтосунов Э."),
+    ("mamytov@demo.kg", "Руслан Мамытов", Role.buyer, "Мамытов Р."),
 ]
 
 
@@ -94,9 +95,11 @@ def seed_demo(
     if settings.env == "prod":
         raise typer.BadParameter("демо-данные в проде не создаются")
     from secondkey.engine import synthetic
-    from secondkey.services.audits import create_run, create_upload, execute_run
+    from secondkey.integrations.contract import PurchasesIn
+    from secondkey.services.audits import execute_run
+    from secondkey.services.integrations import submit_purchases
     from secondkey.services.market import points_from_raw, save_points
-    from secondkey.services.orgs import add_member, create_org
+    from secondkey.services.orgs import add_member, create_org, inn_salt
     from secondkey.services.storage import get_storage
 
     async def go() -> None:
@@ -108,19 +111,14 @@ def seed_demo(
             org = await create_org(s, DEMO_ORG)
             members = [await add_member(s, org, e, n, r, DEMO_PASSWORD, a) for e, n, r, a in DEMO_USERS]
             added = await save_points(s, points_from_raw(synthetic.market_points()))
-            with tempfile.TemporaryDirectory() as d:
-                path = Path(d) / "registry.xlsx"
-                synthetic.write_xlsx(synthetic.Generator(seed).generate(), path)
-                data = path.read_bytes()
-            upload = await create_upload(
-                s,
-                org.id,
-                members[2].user_id,
-                "Закупки материалов 10.2025–09.2026.xlsx",
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                data,
+            # как из обработки 1С: строки, карточки поставщиков и сотрудники (хэши ИНН с солью организации)
+            payload = PurchasesIn(
+                source="1c:bp30",
+                lines=synthetic.records(synthetic.Generator(seed).generate()),
+                suppliers=synthetic.supplier_cards(),
+                staff=synthetic.staff(inn_salt(org)),
             )
-            audit = await create_run(s, org, upload, members[2].user_id)
+            audit = await submit_purchases(s, org.id, payload, members[2].user_id)
             run_id = audit.id
         typer.echo(f"организация: {DEMO_ORG}\nрыночных точек добавлено: {added}")
         typer.echo("пользователи (пароль " + DEMO_PASSWORD + "):")
@@ -163,6 +161,7 @@ def bench(
     out: Annotated[Path | None, typer.Option(help="Куда сохранить metrics.json")] = None,
     min_precision: Annotated[float, typer.Option(help="Порог точности по строкам для CI")] = 0.95,
     min_money: Annotated[float, typer.Option(help="Порог доли найденной истинной переплаты")] = 0.8,
+    min_links: Annotated[float, typer.Option(help="Порог доли найденных подсаженных связок")] = 1.0,
 ) -> None:
     """Бенчмарк движка на синтетике с ground truth; код выхода 1 — качество ниже порога."""
     from secondkey.engine import bench as b
@@ -182,11 +181,18 @@ def bench(
                 "money_ratio": money["ratio_found_to_true"],
                 "missed": metrics["missed_instances"],
                 "normalized": metrics["normalization"]["share_auto"],
+                "links_recall": metrics["links"]["recall"],
+                "links_trace_recall": metrics["links"]["trace_recall"],
+                "false_links": metrics["links"]["false_links"],
             },
             ensure_ascii=False,
         )
     )
-    if (money["line_precision"] or 0) < min_precision or (money["ratio_found_to_true"] or 0) < min_money:
+    if (
+        (money["line_precision"] or 0) < min_precision
+        or (money["ratio_found_to_true"] or 0) < min_money
+        or (metrics["links"]["recall"] or 0) < min_links
+    ):
         raise typer.Exit(1)
 
 

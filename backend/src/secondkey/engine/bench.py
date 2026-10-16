@@ -4,7 +4,8 @@
 1. нормализацию: какая доля строк распознана и не склеены ли разные позиции
    (попарные precision/recall отношения «та же позиция»);
 2. обнаружение: какие подсаженные нарушения найдены и сколько ложных срабатываний;
-3. деньги: оценка переплаты против истинной переплаты по типам нарушений.
+3. деньги: оценка переплаты против истинной переплаты по типам нарушений;
+4. связки: найдены ли подсаженные пары «снабженец — поставщик», их следы и лишние связки.
 """
 
 from __future__ import annotations
@@ -14,13 +15,15 @@ from collections import defaultdict
 from decimal import Decimal
 from pathlib import Path
 
+from secondkey.engine.inn import inn_hash
 from secondkey.engine.market import MarketPoint, MarketStore
-from secondkey.engine.models import AuditResult, PurchaseLine
+from secondkey.engine.models import AuditResult, PurchaseLine, StaffRef
 from secondkey.engine.normalize import normalize_line
 from secondkey.engine.pipeline import audit_file
 from secondkey.engine.rules import AuditConfig
 
-MONEY_TYPES = ("A1", "A2", "A3", "A8")
+MONEY_TYPES = ("A1", "A2", "A3", "A8", "B1", "C1")
+BENCH_SALT = "bench"
 
 
 def load_market(raw_path: Path) -> MarketStore:
@@ -87,11 +90,46 @@ def _pairs_metrics(res: AuditResult, truth_lines: dict) -> dict:
     }
 
 
+def _links_metrics(res: AuditResult, truth_links: dict) -> dict:
+    """Подсаженные связки: найдена ли пара, какие ожидаемые следы есть; связки сверх подсаженных — ложные."""
+    found = {(f.supplier, f.evidence.get("responsible")): f for f in res.findings if f.code == "LINK"}
+    expected_pairs = {(v["supplier"], v["responsible"]) for v in truth_links.values()}
+    detail, hit, traces_total, traces_hit = {}, 0, 0, 0
+    for key, v in truth_links.items():
+        f = found.get((v["supplier"], v["responsible"]))
+        codes = {t["code"] for t in f.evidence["traces"]} if f else set()
+        got = [c for c in v["traces"] if c in codes]
+        hit += int(f is not None)
+        traces_total += len(v["traces"])
+        traces_hit += len(got)
+        detail[key] = {"found": f is not None, "traces": sorted(codes), "missing": sorted(set(v["traces"]) - codes)}
+    extra = sorted(f"{s} / {r}" for s, r in found if (s, r) not in expected_pairs)
+    return {
+        "planted": len(truth_links),
+        "detected": hit,
+        "recall": round(hit / len(truth_links), 4) if truth_links else None,
+        "trace_recall": round(traces_hit / traces_total, 4) if traces_total else None,
+        "false_links": extra,
+        "detail": detail,
+    }
+
+
 def run(corpus_dir: Path, out_dir: Path | None = None, overrides: dict | None = None) -> tuple:
     truth = json.loads((corpus_dir / "truth.json").read_text(encoding="utf-8"))
     market = load_market(corpus_dir / "market_raw.jsonl")
     cfg = AuditConfig(approval_threshold=Decimal(truth["approval_threshold"]), **(overrides or {}))
-    res = audit_file(corpus_dir / "registry.xlsx", truth["company"], market, cfg)
+    staff = [
+        StaffRef(name=x["name"], role=x.get("role"), inn_hash=inn_hash(BENCH_SALT, x["inn"]))
+        for x in truth.get("staff", [])
+    ]
+    res = audit_file(
+        corpus_dir / "registry.xlsx",
+        truth["company"],
+        market,
+        cfg,
+        staff=staff,
+        hash_inn=lambda inn: inn_hash(BENCH_SALT, inn),
+    )
     tl = truth["lines"]
 
     status = defaultdict(int)
@@ -199,6 +237,7 @@ def run(corpus_dir: Path, out_dir: Path | None = None, overrides: dict | None = 
             c: sum(1 for f in res.findings if f.code == c) for c in sorted({f.code for f in res.findings})
         },
         "fp_examples": sorted(fp_lines)[:15],
+        "links": _links_metrics(res, truth.get("links", {})),
     }
     if out_dir:
         out_dir.mkdir(parents=True, exist_ok=True)

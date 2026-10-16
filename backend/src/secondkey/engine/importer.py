@@ -16,16 +16,31 @@ from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
-from secondkey.engine.models import PurchaseLine
+from secondkey.engine.inn import clean_inn
+from secondkey.engine.models import PurchaseLine, SupplierCard
 from secondkey.engine.numbers import parse_decimal
 
 # поле → синонимы заголовка (нижний регистр); порядок полей важен:
 # «сумма ндс» должна уйти в vat раньше, чем «сумма» заберёт её в amount
+# входящие номер и дата (счёт/накладная поставщика) — раньше «номера» и «даты» документа;
+# реквизиты контрагента — только с «контрагента/поставщика» в заголовке, чтобы не забрать «адрес доставки»
 FIELD_SYNONYMS: list[tuple[str, tuple[str, ...]]] = [
     ("vat", ("сумма ндс", "в т.ч. ндс", "в том числе ндс", "ндс")),
     ("supplier_inn", ("инн контрагента", "инн поставщика", "инн")),
+    (
+        "doc_in_no",
+        ("номер входящего документа", "входящий номер", "вх. номер", "номер вх.", "вх. №", "№ вх.", "вх.номер"),
+    ),
+    ("doc_in_date", ("дата входящего документа", "входящая дата", "дата вх.", "вх. дата", "дата вх")),
     ("date", ("дата документа", "дата поступления", "дата", "период")),
-    ("doc_no", ("номер документа", "№ документа", "номер вх.", "вх. номер", "номер", "документ", "регистратор")),
+    ("doc_no", ("номер документа", "№ документа", "номер", "документ", "регистратор")),
+    ("supplier_phone", ("телефон контрагента", "телефон поставщика")),
+    ("supplier_email", ("email контрагента", "e-mail контрагента", "эл. почта контрагента", "email поставщика")),
+    ("supplier_address", ("адрес контрагента", "адрес поставщика", "юридический адрес контрагента")),
+    (
+        "supplier_account",
+        ("расчетный счет контрагента", "расчётный счёт контрагента", "р/с контрагента", "счет контрагента"),
+    ),
     ("supplier", ("контрагент", "поставщик", "продавец")),
     ("item", ("номенклатура", "наименование товара", "наименование", "товар", "материал")),
     ("qty", ("количество", "кол-во", "кол.")),
@@ -55,6 +70,7 @@ class ImportResult:
     mapping: dict[str, int]  # поле → индекс колонки
     header_row: int  # номер строки шапки (1-based)
     warnings: list[str] = field(default_factory=list)
+    suppliers: dict[str, SupplierCard] = field(default_factory=dict)  # имя поставщика → реквизиты из колонок
 
 
 def _norm_header(v: object) -> str:
@@ -230,6 +246,15 @@ RECORD_FIELDS = {
     "vat": "vat",
     "object": "object_name",
     "responsible": "responsible",
+    "doc_in_no": "doc_in_no",
+    "doc_in_date": "doc_in_date",
+}
+
+CARD_FIELDS = {
+    "supplier_phone": "phone",
+    "supplier_email": "email",
+    "supplier_address": "address",
+    "supplier_account": "bank_account",
 }
 
 
@@ -247,6 +272,14 @@ def _build(rows: list[list[object]], mapping: dict[str, int], header_row: int, f
     def cell(row: list[object], fld: str) -> object:
         idx = mapping.get(fld)
         return row[idx] if idx is not None and idx < len(row) else None
+
+    def text(row: list[object], fld: str) -> str | None:
+        v = cell(row, fld)
+        if v in (None, ""):
+            return None
+        if isinstance(v, float) and v.is_integer():
+            v = int(v)  # «41.0» из Excel → «41»
+        return str(v).strip() or None
 
     for i, row in enumerate(rows, start=first_row_no):
         if not any(c not in (None, "") for c in row):
@@ -276,23 +309,35 @@ def _build(rows: list[list[object]], mapping: dict[str, int], header_row: int, f
             )
             price = (amount / qty).quantize(Decimal("0.01"), ROUND_HALF_UP)
         vat = parse_number(cell(row, "vat"))
-        doc_no = cell(row, "doc_no")
+        doc_in_no = text(row, "doc_in_no")
+        doc_no = text(row, "doc_no") or doc_in_no  # в таблице только входящий номер — он и номер документа
+        supplier = re.sub(r"\s+", " ", supplier)
+        card_values = {attr: text(row, fld) for fld, attr in CARD_FIELDS.items()}
+        if any(card_values.values()):
+            card = result.suppliers.setdefault(supplier, SupplierCard(name=supplier))
+            for attr, v in card_values.items():
+                if v and not getattr(card, attr):
+                    setattr(card, attr, v)
         result.lines.append(
             PurchaseLine(
                 line_id=f"r{i}",
                 date=d,
-                supplier=re.sub(r"\s+", " ", supplier),
+                supplier=supplier,
                 item_raw=item,
                 qty=qty,
                 unit_raw=(str(cell(row, "unit")).strip() if cell(row, "unit") not in (None, "") else None),
                 price=price,
                 amount=amount,
-                doc_no=str(doc_no).strip() if doc_no not in (None, "") else None,
-                supplier_inn=(str(cell(row, "supplier_inn")).strip() if cell(row, "supplier_inn") else None),
+                doc_no=doc_no,
+                supplier_inn=clean_inn(cell(row, "supplier_inn")) or text(row, "supplier_inn"),
                 vat_included=(True if vat and vat > 0 else None),
                 object_name=(str(cell(row, "object_name")).strip() if cell(row, "object_name") else None),
                 responsible=(str(cell(row, "responsible")).strip() if cell(row, "responsible") else None),
                 source_row=i,
+                doc_in_no=doc_in_no,
+                doc_in_date=parse_date(cell(row, "doc_in_date")),
             )
         )
+    for card in result.suppliers.values():
+        card.inn = next((L.supplier_inn for L in result.lines if L.supplier == card.name and L.supplier_inn), None)
     return result

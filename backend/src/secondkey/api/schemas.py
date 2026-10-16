@@ -219,10 +219,54 @@ class LineOut(Out):
     norm_status: str
     norm_note: str | None
     overpayment: Decimal
+    doc_in_no: str | None = None
+    doc_in_date: date | None = None
 
 
 class FindingLineOut(LineOut):
     finding_overpayment: Decimal
+
+
+class SupplierBuyer(BaseModel):
+    name: str
+    spend: Decimal
+    lines: int
+
+
+class SupplierTrace(BaseModel):
+    code: str  # L-01 … L-12; P-01/P-02/P-03 — ценовые находки по строкам пары
+    group: str  # price | behavior | identity
+    text: str
+    responsible: str | None = None
+    money: Decimal = Decimal("0")
+    facts: dict[str, Any] = {}
+
+
+class SupplierCardOut(BaseModel):
+    phone: str | None = None
+    email: str | None = None
+    address: str | None = None
+    bank_account: str | None = None
+
+
+class SupplierOut(Out):
+    """Досье поставщика за прогон: видят собственник и финансы."""
+
+    id: uuid.UUID
+    name: str
+    inn: str | None
+    inn_kind: str | None
+    inn_date: date | None
+    spend: Decimal
+    lines: int
+    share: Decimal
+    first_date: date
+    last_date: date
+    skus: int
+    buyers: list[SupplierBuyer]
+    card: SupplierCardOut | None
+    traces: list[SupplierTrace]
+    linked: bool
 
 
 class PersonRef(BaseModel):

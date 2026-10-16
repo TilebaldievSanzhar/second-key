@@ -16,7 +16,7 @@ from fastapi.sse import EventSourceResponse, ServerSentEvent
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from secondkey.api.deps import SEE_ALL, UPLOAD, CurrentMember, Member, Session, require, stream_member
+from secondkey.api.deps import MANAGE, SEE_ALL, UPLOAD, CurrentMember, Member, Session, require, stream_member
 from secondkey.api.schemas import (
     BreakdownRow,
     DigestOut,
@@ -28,6 +28,7 @@ from secondkey.api.schemas import (
     RunIn,
     RunOut,
     RunSummary,
+    SupplierOut,
     TimelineMonth,
 )
 from secondkey.config import settings
@@ -40,6 +41,7 @@ from secondkey.db.models import (
     Organization,
     PurchaseLine,
     RunStatus,
+    RunSupplier,
     Upload,
 )
 from secondkey.db.session import sessionmaker
@@ -180,9 +182,10 @@ async def summary(run_id: uuid.UUID, session: Session, member: Member = require(
         )
     ).all():
         setattr(counts, FindingStatus(st).value, n)
+    # связка (LINK) денег не добавляет: её сумма — справочно, это переплата ценовых вопросов по тем же строкам
     confirmed = await session.scalar(
         select(func.coalesce(func.sum(Finding.overpayment), 0)).where(
-            Finding.run_id == run_id, Finding.status == FindingStatus.confirmed
+            Finding.run_id == run_id, Finding.status == FindingStatus.confirmed, Finding.code != "LINK"
         )
     )
 
@@ -228,6 +231,23 @@ async def summary(run_id: uuid.UUID, session: Session, member: Member = require(
         by_responsible=await _breakdown(session, run_id, PurchaseLine.responsible),
         by_material=await _breakdown(session, run_id, PurchaseLine.head),
     )
+
+
+@router.get("/{run_id}/suppliers", response_model=list[SupplierOut])
+async def suppliers(
+    run_id: uuid.UUID,
+    session: Session,
+    member: Member = require(*MANAGE),
+    linked: bool | None = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 200,
+) -> list[SupplierOut]:
+    """Досье поставщиков прогона: обороты, через кого покупали, ИНН, реквизиты, следы связок (engine/links.py)."""
+    await _run(session, run_id, member)
+    stmt = select(RunSupplier).where(RunSupplier.run_id == run_id)
+    if linked is not None:
+        stmt = stmt.where(RunSupplier.linked == linked)
+    rows = (await session.scalars(stmt.order_by(RunSupplier.spend.desc()).limit(limit))).all()
+    return [SupplierOut.model_validate(r) for r in rows]
 
 
 @router.get("/{run_id}/lines", response_model=Page[LineOut])

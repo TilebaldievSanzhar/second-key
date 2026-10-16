@@ -861,6 +861,99 @@
         }
       }
     },
+    "/api/audits/{run_id}/suppliers": {
+      "get": {
+        "tags": [
+          "audits"
+        ],
+        "summary": "Suppliers",
+        "description": "Досье поставщиков прогона: обороты, через кого покупали, ИНН, реквизиты, следы связок (engine/links.py).",
+        "operationId": "suppliers_api_audits__run_id__suppliers_get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "linked",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Linked"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 200,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "x-org-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SupplierOut"
+                  },
+                  "title": "Response Suppliers Api Audits  Run Id  Suppliers Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/audits/{run_id}/lines": {
       "get": {
         "tags": [
@@ -1314,7 +1407,7 @@
               "anyOf": [
                 {
                   "type": "string",
-                  "pattern": "^P-\\d{2}$"
+                  "pattern": "^(P-\\d{2}|LINK)$"
                 },
                 {
                   "type": "null"
@@ -1856,7 +1949,7 @@
           "integrations"
         ],
         "summary": "Ping",
-        "description": "Проверка связи из 1С: токен действителен.",
+        "description": "Проверка связи из 1С: токен действителен. inn_salt — соль для хэшей ИНН сотрудников (поле staff выгрузки).",
         "operationId": "ping_api_integrations_ping_get",
         "responses": {
           "200": {
@@ -3290,6 +3383,29 @@
             "type": "string",
             "title": "Overpayment"
           },
+          "doc_in_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doc In No"
+          },
+          "doc_in_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doc In Date"
+          },
           "finding_overpayment": {
             "type": "string",
             "title": "Finding Overpayment"
@@ -3707,6 +3823,29 @@
           "overpayment": {
             "type": "string",
             "title": "Overpayment"
+          },
+          "doc_in_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doc In No"
+          },
+          "doc_in_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doc In Date"
           }
         },
         "type": "object",
@@ -4494,6 +4633,32 @@
             ],
             "title": "Ref",
             "description": "Ссылка документа в источнике (GUID 1С)"
+          },
+          "doc_in_no": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doc In No",
+            "description": "Входящий номер: счёт/накладная поставщика"
+          },
+          "doc_in_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doc In Date",
+            "description": "Дата входящего документа"
           }
         },
         "type": "object",
@@ -4546,6 +4711,24 @@
             "maxItems": 200000,
             "minItems": 1,
             "title": "Lines"
+          },
+          "suppliers": {
+            "items": {
+              "$ref": "#/components/schemas/SupplierIn"
+            },
+            "type": "array",
+            "maxItems": 50000,
+            "title": "Suppliers",
+            "default": []
+          },
+          "staff": {
+            "items": {
+              "$ref": "#/components/schemas/StaffIn"
+            },
+            "type": "array",
+            "maxItems": 20000,
+            "title": "Staff",
+            "default": []
           }
         },
         "type": "object",
@@ -4819,6 +5002,42 @@
         ],
         "title": "RunSummary"
       },
+      "StaffIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "description": "Как сотрудник записан в учёте"
+          },
+          "inn_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Inn Hash"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role",
+            "description": "Должность: «прораб», «снабженец»"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "inn_hash"
+        ],
+        "title": "StaffIn",
+        "description": "Сотрудник: ИНН — только хэшем SHA-256 от «соль:ИНН» (соль — в ответе /integrations/ping)."
+      },
       "SubmitOut": {
         "properties": {
           "run_id": {
@@ -4887,6 +5106,323 @@
           "by"
         ],
         "title": "SuggestedMapping"
+      },
+      "SupplierBuyer": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "spend": {
+            "type": "string",
+            "title": "Spend"
+          },
+          "lines": {
+            "type": "integer",
+            "title": "Lines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "spend",
+          "lines"
+        ],
+        "title": "SupplierBuyer"
+      },
+      "SupplierCardOut": {
+        "properties": {
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "bank_account": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank Account"
+          }
+        },
+        "type": "object",
+        "title": "SupplierCardOut"
+      },
+      "SupplierIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Name",
+            "description": "Как в строках закупок (supplier)"
+          },
+          "inn": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inn"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "bank_account": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank Account",
+            "description": "Основной расчётный счёт"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "SupplierIn",
+        "description": "Реквизиты поставщика из карточки контрагента: по ним видно «конкурентов» с одним владельцем."
+      },
+      "SupplierOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "inn": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inn"
+          },
+          "inn_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inn Kind"
+          },
+          "inn_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inn Date"
+          },
+          "spend": {
+            "type": "string",
+            "title": "Spend"
+          },
+          "lines": {
+            "type": "integer",
+            "title": "Lines"
+          },
+          "share": {
+            "type": "string",
+            "title": "Share"
+          },
+          "first_date": {
+            "type": "string",
+            "format": "date",
+            "title": "First Date"
+          },
+          "last_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Last Date"
+          },
+          "skus": {
+            "type": "integer",
+            "title": "Skus"
+          },
+          "buyers": {
+            "items": {
+              "$ref": "#/components/schemas/SupplierBuyer"
+            },
+            "type": "array",
+            "title": "Buyers"
+          },
+          "card": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SupplierCardOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "traces": {
+            "items": {
+              "$ref": "#/components/schemas/SupplierTrace"
+            },
+            "type": "array",
+            "title": "Traces"
+          },
+          "linked": {
+            "type": "boolean",
+            "title": "Linked"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "inn",
+          "inn_kind",
+          "inn_date",
+          "spend",
+          "lines",
+          "share",
+          "first_date",
+          "last_date",
+          "skus",
+          "buyers",
+          "card",
+          "traces",
+          "linked"
+        ],
+        "title": "SupplierOut",
+        "description": "Досье поставщика за прогон: видят собственник и финансы."
+      },
+      "SupplierTrace": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "group": {
+            "type": "string",
+            "title": "Group"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "responsible": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Responsible"
+          },
+          "money": {
+            "type": "string",
+            "title": "Money",
+            "default": "0"
+          },
+          "facts": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Facts",
+            "default": {}
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "group",
+          "text"
+        ],
+        "title": "SupplierTrace"
       },
       "SyncIn": {
         "properties": {

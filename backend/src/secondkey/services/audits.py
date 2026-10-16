@@ -14,6 +14,7 @@ import tempfile
 import uuid
 from collections import Counter
 from dataclasses import asdict
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -30,16 +31,19 @@ from secondkey.db.models import (
     Organization,
     PurchaseLine,
     RunStatus,
+    RunSupplier,
     Upload,
 )
 from secondkey.db.session import session_scope
 from secondkey.engine.importer import import_records, import_registry, preview_registry
+from secondkey.engine.inn import inn_hash
 from secondkey.engine.market import MarketPoint as EnginePoint
 from secondkey.engine.market import MarketStore
+from secondkey.engine.models import StaffRef, SupplierCard
 from secondkey.engine.normalize import normalize
-from secondkey.engine.pipeline import build_result
+from secondkey.engine.pipeline import analyze, build_result
 from secondkey.engine.report import render_html
-from secondkey.engine.rules import AuditConfig, run_all
+from secondkey.engine.rules import AuditConfig
 from secondkey.observability import log
 from secondkey.services import progress
 from secondkey.services.storage import get_storage
@@ -146,10 +150,19 @@ async def remember_mapping(
 
 
 async def create_json_upload(
-    session: AsyncSession, org_id: uuid.UUID, user_id: uuid.UUID | None, records: list[dict], source: str
+    session: AsyncSession,
+    org_id: uuid.UUID,
+    user_id: uuid.UUID | None,
+    records: list[dict],
+    source: str,
+    extra: dict | None = None,
 ) -> Upload:
-    """Строки закупок по API или из OData: хранятся как есть (JSON в S3) — для доказательства и повтора."""
-    data = json.dumps({"source": source, "lines": records}, ensure_ascii=False).encode()
+    """Строки закупок по API или из OData: хранятся как есть (JSON в S3) — для доказательства и повтора.
+
+    extra — карточки поставщиков и сотрудники (хэши ИНН) из той же выгрузки: нужны связкам.
+    """
+    extra = {k: v for k, v in (extra or {}).items() if v}
+    data = json.dumps({"source": source, "lines": records, **extra}, ensure_ascii=False).encode()
     upload_id = uuid.uuid4()
     dates = sorted(r["date"] for r in records if r.get("date"))
     name = f"{source} {dates[0]}–{dates[-1]}.json" if dates else f"{source}.json"
@@ -173,6 +186,8 @@ async def create_json_upload(
             "missing": [],
             "data_rows": len(records),
             "source": source,
+            "suppliers": len(extra.get("suppliers", [])),
+            "staff": len(extra.get("staff", [])),
         },
     )
     session.add(upload)
@@ -260,19 +275,23 @@ async def execute_run(run_id: uuid.UUID) -> None:
         upload = run.upload
         params, mapping = dict(run.params), run.mapping
         company = org.name if org else "Компания"
+        salt = (org.settings or {}).get("inn_salt") if org else None
 
     try:
         await _set_stage(run_id, RunStatus.importing, 5, started_at=func.now(), error=None)
         data = await get_storage().get(upload.storage_key)
         cols = (mapping or {}).get("columns")
         hdr = (mapping or {}).get("header_row")
+        payload: dict = {}
         try:
             if upload.kind == "json":
-                imp = await asyncio.to_thread(import_records, json.loads(data)["lines"])
+                payload = json.loads(data)
+                imp = await asyncio.to_thread(import_records, payload["lines"])
             else:
                 imp = await _with_tempfile(data, _suffix(upload.filename), import_registry, cols, hdr)
         except ValueError as exc:
             raise UserFacingError(str(exc)) from exc
+        cards, staff = _cards_and_staff(imp.suppliers, payload)
         if not imp.lines:
             raise UserFacingError("В таблице не нашлось ни одной строки закупки с датой, поставщиком и количеством")
 
@@ -284,8 +303,11 @@ async def execute_run(run_id: uuid.UUID) -> None:
         async with session_scope() as s:
             market = await _market_for(s, {n.sku for n in norm if n.sku})
         cfg = config_from_params(params)
-        findings = await asyncio.to_thread(run_all, norm, cfg, market.lookup if len(market) else None)
-        result = build_result(company, imp.lines, norm, findings, imp.warnings)
+        hash_fn = (lambda inn: inn_hash(salt, inn)) if salt and staff else None
+        findings, suppliers = await asyncio.to_thread(
+            analyze, norm, cfg, market if len(market) else None, cards, staff, hash_fn
+        )
+        result = build_result(company, imp.lines, norm, findings, imp.warnings, suppliers)
 
         await _set_stage(run_id, RunStatus.reporting, 80)
         await _persist(run_id, result, len(market))
@@ -316,6 +338,28 @@ async def execute_run(run_id: uuid.UUID) -> None:
         raise exc
 
 
+def _cards_and_staff(from_columns: dict[str, SupplierCard], payload: dict) -> tuple[dict, list[StaffRef]]:
+    """Реквизиты поставщиков: из колонок таблицы или из карточек выгрузки 1С (карточки важнее)."""
+    cards = dict(from_columns)
+    for c in payload.get("suppliers") or []:
+        name = re.sub(r"\s+", " ", str(c.get("name") or "")).strip()
+        if name:
+            cards[name] = SupplierCard(
+                name=name,
+                inn=c.get("inn"),
+                phone=c.get("phone"),
+                email=c.get("email"),
+                address=c.get("address"),
+                bank_account=c.get("bank_account"),
+            )
+    staff = [
+        StaffRef(name=x["name"], inn_hash=x.get("inn_hash"), role=x.get("role"))
+        for x in payload.get("staff") or []
+        if x.get("name")
+    ]
+    return cards, staff
+
+
 async def _ai_normalize(norm, warnings: list[str]):
     """Нераспознанные строки — модулю промптов normalize_item; позицию по-прежнему определяет движок."""
     from secondkey import llm
@@ -338,6 +382,7 @@ async def _persist(run_id: uuid.UUID, result, market_points: int) -> None:
         run = await s.get(AuditRun, run_id)
         org_id = run.org_id
         await s.execute(delete(Finding).where(Finding.run_id == run_id))
+        await s.execute(delete(RunSupplier).where(RunSupplier.run_id == run_id))
         await s.execute(delete(PurchaseLine).where(PurchaseLine.run_id == run_id))
 
         line_ids: dict[str, uuid.UUID] = {}
@@ -374,6 +419,8 @@ async def _persist(run_id: uuid.UUID, result, market_points: int) -> None:
                     "norm_status": nl.status,
                     "norm_note": nl.note or None,
                     "overpayment": result.line_overpayment.get(L.line_id, Decimal("0")),
+                    "doc_in_no": (L.doc_in_no or "")[:64] or None,
+                    "doc_in_date": L.doc_in_date,
                 }
             )
         for i in range(0, len(rows), 1000):
@@ -405,6 +452,29 @@ async def _persist(run_id: uuid.UUID, result, market_points: int) -> None:
             ]
             s.add(finding)
 
+        linked = {f.supplier for f in result.findings if f.code == "LINK"}
+        for p in result.suppliers:
+            s.add(
+                RunSupplier(
+                    org_id=org_id,
+                    run_id=run_id,
+                    name=p.name,
+                    inn=p.inn,
+                    inn_kind=p.inn_kind,
+                    inn_date=p.inn_date,
+                    spend=p.spend,
+                    lines=p.lines,
+                    share=p.share,
+                    first_date=p.first_date,
+                    last_date=p.last_date,
+                    skus=p.skus,
+                    buyers=_jsonable(p.buyers),
+                    card=_jsonable(asdict(p.card)) if p.card else None,
+                    traces=[_jsonable({k: v for k, v in asdict(t).items() if k != "line_ids"}) for t in p.traces],
+                    linked=p.name in linked,
+                )
+            )
+
         statuses = Counter(nl.status for nl in result.lines)
         run.period_start, run.period_end = result.period if result.period else (None, None)
         run.lines_total = len(result.lines)
@@ -424,4 +494,6 @@ def _jsonable(v: Any) -> Any:
         return [_jsonable(x) for x in v]
     if isinstance(v, Decimal):
         return str(v)
+    if isinstance(v, date):
+        return v.isoformat()
     return v

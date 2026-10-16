@@ -16,6 +16,15 @@
   A5 P-06  повтор документа
   A6 P-07  ошибка единицы (цена за кг в строке с единицей «т»)
   A8 P-01  срочные покупки в рознице (+7%) при живом оптовом поставщике
+
+Подсаженные связки снабженца и поставщика (engine/links.py, docs/product/SUPPLIER_LINKS.md):
+  A1 → L-A  Асанов ↔ ИП Сыдыков: премия к закупкам Токтосунова той же арматуры, почти весь оборот
+            через Асанова, входящие номера подряд, ИП 21 год по ИНН
+  B1 → L-B  новый снабженец Мамытов (с февраля) приводит ОсОО «Бетон Плюс Строй»: фирма зарегистрирована
+            за три месяца до первой поставки, бетон на 9% дороже
+  C1 → L-C  ОсОО «Карьер Сервис» — «второй поставщик» песка и щебня с теми же телефоном и счётом,
+            что у ИП Жумабаев; оба выше рынка
+  L-D       ИП Бекова С. (пиломатериалы) — ИНН совпадает с ИНН прораба
 Истинная переплата строки = цена строки − честная цена основного поставщика на ту же дату.
 """
 
@@ -42,7 +51,7 @@ APPROVAL_THRESHOLD = Decimal("500000")
 SUPPLIERS = {
     "ОсОО «Темир Снаб»": ("0.99", "01204201810015"),
     "ОсОО «Металл Базар КГ»": ("1.01", "01503201910042"),
-    "ИП Сыдыков А.Т.": ("1.00", "21102198500311"),
+    "ИП Сыдыков А.Т.": ("1.00", "20304200410556"),  # по ИНН — 2004 года рождения
     "ОсОО «Кант Цемент Снаб»": ("0.99", "02201201610027"),
     "ОсОО «Цемент Опт»": ("1.01", "01107202110058"),
     "ИП Жумабаев Н.": ("1.00", "20909197900124"),
@@ -58,7 +67,39 @@ SUPPLIERS = {
     "ОсОО «Изоляция КГ»": ("1.00", "02103202210038"),
     "ОсОО «Крепёж Плюс»": ("0.99", "01408201610077"),
     "ОсОО «Строймаркет Восток»": ("1.07", "00509201510026"),  # розница
+    "ОсОО «Бетон Плюс Строй»": ("1.00", "01011202510327"),  # по ИНН — зарегистрировано 10.11.2025
+    "ОсОО «Карьер Сервис»": ("1.00", "01502201910233"),
 }
+B_SUPPLIER = "ОсОО «Бетон Плюс Строй»"
+C_SUPPLIER = "ОсОО «Карьер Сервис»"
+NEW_BUYER = "Мамытов Р."  # снабженец с февраля 2026: бетон для ЖК «Ордо»
+NEW_BUYER_FROM = 4  # месяц периода
+
+# реквизиты из карточек контрагентов; у ИП Жумабаев и «Карьер Сервис» — одни телефон и счёт
+_SHARED_PHONE, _SHARED_ACCOUNT = "+996 555 41-27-09", "1180000123456789"
+CARDS: dict[str, dict[str, str]] = {
+    name: {
+        "phone": f"+996 {550 + i % 9}{i:02d} {10 + i}-{20 + i}-{30 + i}",
+        "bank_account": f"12{i:02d}0000{987654 + i * 1111:08d}",
+        "address": f"г. Бишкек, ул. Складская, {10 + i}",
+    }
+    for i, name in enumerate(SUPPLIERS)
+}
+CARDS["ИП Жумабаев Н."] |= {"phone": _SHARED_PHONE, "bank_account": _SHARED_ACCOUNT}
+CARDS[C_SUPPLIER] |= {"phone": _SHARED_PHONE.replace(" ", ""), "bank_account": _SHARED_ACCOUNT}
+
+# сотрудники: ИНН прораба совпадает с ИНН поставщика ИП Бекова С.
+STAFF = [
+    {"name": "Асанов Б.", "inn": "21507199000418", "role": "снабженец"},
+    {"name": "Токтосунов Э.", "inn": "20211198700233", "role": "снабженец"},
+    {"name": "Исаева Г.", "inn": "12208199200517", "role": "снабженец"},
+    {"name": "Мамытов Р.", "inn": "20906199500142", "role": "снабженец"},
+    {"name": "Бекова С.", "inn": "11407198800452", "role": "прораб"},
+]
+
+# шаг входящих номеров поставщика между вашими документами: у крупных — тысячи клиентов,
+# у ИП Сыдыков — почти только вы
+NUM_STEP = {"ИП Сыдыков А.Т.": (1, 2), "ИП Жумабаев Н.": (6, 30), "ИП Бекова С.": (5, 25)}
 RETAIL = "ОсОО «Строймаркет Восток»"
 WHO = {
     "metal": "Асанов Б.",
@@ -73,7 +114,16 @@ WHO = {
     "pipe": "Исаева Г.",
     "fastener": "Исаева Г.",
 }
-WHO_INDEX = {"Асанов Б.": 0, "Токтосунов Э.": 1, "Исаева Г.": 2}
+# металл для ЖК «Ордо» закупает Токтосунов: арматуру покупают двое — есть с кем сравнить
+WHO_BY_OBJECT = {("metal", "ЖК «Ордо», Бишкек"): "Токтосунов Э."}
+WHO_INDEX = {"Асанов Б.": 0, "Токтосунов Э.": 1, "Исаева Г.": 2, NEW_BUYER: 1}
+
+
+def who_for(group: str, obj: str, m: int) -> str:
+    if group == "concrete" and obj == "ЖК «Ордо», Бишкек" and m >= NEW_BUYER_FROM:
+        return NEW_BUYER
+    return WHO_BY_OBJECT.get((group, obj), WHO[group])
+
 
 # группа → (тренд в месяц, сезонная надбавка май–сентябрь)
 TRENDS = {
@@ -184,7 +234,7 @@ CATALOG: list[Sku] = [
         "1150",
         (150, 250),
         _u(("м3", "1", 0.7), ("куб", "1", 0.3)),
-        [("ИП Жумабаев Н.", 0.75), ("ОсОО «Ала-Тоо Карьер»", 0.25)],
+        [("ИП Жумабаев Н.", 0.6), (C_SUPPLIER, 0.15), ("ОсОО «Ала-Тоо Карьер»", 0.25)],
         market=True,
     ),
     Sku(
@@ -196,7 +246,7 @@ CATALOG: list[Sku] = [
         "1450",
         (120, 200),
         _u(("м3", "1", 0.7), ("куб", "1", 0.3)),
-        [("ИП Жумабаев Н.", 0.75), ("ОсОО «Ала-Тоо Карьер»", 0.25)],
+        [("ИП Жумабаев Н.", 0.6), (C_SUPPLIER, 0.15), ("ОсОО «Ала-Тоо Карьер»", 0.25)],
         market=True,
     ),
     Sku(
@@ -562,6 +612,8 @@ class GenLine:
     who: str
     fair_amount: Decimal  # честная стоимость (основной поставщик без нарушений)
     anomalies: list[str] = field(default_factory=list)
+    doc_in: str = ""  # входящий номер — счёт/накладная поставщика
+    doc_in_date: date | None = None
 
 
 def _q(v: Decimal, places: str = "0.01") -> Decimal:
@@ -573,6 +625,17 @@ class Generator:
         self.rng = random.Random(seed)
         self.doc_no = 1000
         self.lines: list[GenLine] = []
+        self.in_no: dict[str, int] = {}
+
+    def _doc_in(self, supplier: str) -> str:
+        """Номер документа поставщика: растёт на число его документов другим покупателям."""
+        lo, hi = NUM_STEP.get(supplier, (20, 400))
+        if supplier not in self.in_no:
+            self.in_no[supplier] = self.rng.randint(40, 60) if supplier in NUM_STEP else self.rng.randint(500, 9000)
+        step = self.rng.choices([lo, hi], weights=[0.9, 0.1])[0] if lo == 1 else self.rng.randint(lo, hi)
+        self.in_no[supplier] += step
+        n = self.in_no[supplier]
+        return f"СФ-{n:06d}" if supplier.startswith("ОсОО") else str(n)
 
     def _doc(self) -> str:
         self.doc_no += self.rng.randint(1, 4)
@@ -603,9 +666,15 @@ class Generator:
         name = self.rng.choices([s for s, _ in sups], weights=[w for _, w in sups])[0]
         mult = supplier_markup(name)
         tags: list[str] = []
-        # A1: «свой» поставщик снабженца по арматуре ⌀12/⌀14 с 4-го месяца
-        if sku.key in ("rebar12", "rebar14") and m >= 3 and self.rng.random() < 0.45:
+        # A1: «свой» поставщик Асанова по арматуре ⌀12/⌀14 с 4-го месяца
+        if sku.key in ("rebar12", "rebar14") and m >= 3 and who == "Асанов Б." and self.rng.random() < 0.7:
             name, mult, tags = "ИП Сыдыков А.Т.", Decimal("1.15"), ["A1"]
+        # B1: новый снабженец Мамытов приводит новую фирму по бетону (+9%)
+        elif sku.group == "concrete" and who == NEW_BUYER and self.rng.random() < 0.7:
+            name, mult, tags = B_SUPPLIER, Decimal("1.09"), ["B1"]
+        # C1: «второй поставщик» песка и щебня с реквизитами ИП Жумабаев (+20%)
+        elif name == C_SUPPLIER:
+            mult, tags = Decimal("1.20"), ["C1"]
         # A3: песок и щебень 5-20 у основного поставщика на 22% выше рынка
         elif name == "ИП Жумабаев Н.":
             mult, tags = Decimal("1.22"), ["A3"]
@@ -619,7 +688,7 @@ class Generator:
 
     def _fair_mult(self, sku: Sku) -> Decimal:
         """Честная цена = основной (самый массовый) не-аномальный поставщик позиции."""
-        normal = [(s, w) for s, w in sku.suppliers if s not in (RETAIL, "ИП Жумабаев Н.")]
+        normal = [(s, w) for s, w in sku.suppliers if s not in (RETAIL, "ИП Жумабаев Н.", C_SUPPLIER)]
         main = max(normal, key=lambda x: x[1])[0] if normal else "ОсОО «Ала-Тоо Карьер»"
         return supplier_markup(main)
 
@@ -663,6 +732,8 @@ class Generator:
             who,
             fair_amount,
             list(tags or []),
+            "",  # входящий номер — после генерации, по порядку дат (_number_docs)
+            d - timedelta(days=self.rng.choice([0, 0, 0, 1, 2])),
         )
         self.lines.append(line)
         return line
@@ -679,12 +750,18 @@ class Generator:
                     k = rng.choices([1, 2, 3], weights=[0.35, 0.45, 0.2])[0]
                     for _ in range(k):
                         d = month_start + timedelta(days=rng.randrange(0, 27))
-                        self.add(sku, d, demand / k, obj, WHO[sku.group])
+                        self.add(sku, d, demand / k, obj, who_for(sku.group, obj, m))
         self._seed_split()
+        self._number_docs()
         self._seed_duplicates()
         self._seed_unit_errors()
         self.lines.sort(key=lambda l: (l.d, l.doc))
         return self.lines
+
+    def _number_docs(self) -> None:
+        """Входящие номера по порядку дат: поставщик нумерует документы во времени, а не в порядке генерации."""
+        for line in sorted(self.lines, key=lambda l: (l.d, l.doc)):
+            line.doc_in = self._doc_in(line.supplier)
 
     def _seed_split(self) -> None:
         """A4: цемент М400 дробится на 4 покупки по 420–495 тыс. сом (чуть ниже порога 500 тыс.) за 5 дней."""
@@ -694,7 +771,8 @@ class Generator:
             for i in range(4):
                 d = start + timedelta(days=[0, 1, 3, 4][i])
                 target = Decimal(self.rng.randrange(420000, 495000))
-                qty_base = target / market_price(sku, d)
+                # наценка поставщика и шум строки — до +3%: сумма не должна перевалить порог
+                qty_base = target / (market_price(sku, d) * Decimal("1.03"))
                 self.add(
                     sku,
                     d,
@@ -725,6 +803,8 @@ class Generator:
                 src.who,
                 Decimal("0"),
                 [f"A5-{n + 1}"],
+                src.doc_in,
+                src.doc_in_date,
             )
             self.lines.append(dup)
 
@@ -762,6 +842,11 @@ def write_xlsx(lines: list[GenLine], path: Path) -> dict[str, GenLine]:
             "НДС",
             "Объект",
             "Ответственный",
+            "Вх. номер",
+            "Дата вх.",
+            "Телефон контрагента",
+            "Расчетный счет контрагента",
+            "Адрес контрагента",
         ]
     )
     by_id: dict[str, GenLine] = {}
@@ -781,14 +866,55 @@ def write_xlsx(lines: list[GenLine], path: Path) -> dict[str, GenLine]:
                 float(vat),
                 l.obj,
                 l.who,
+                l.doc_in,
+                l.doc_in_date,
+                CARDS[l.supplier]["phone"],
+                CARDS[l.supplier]["bank_account"],
+                CARDS[l.supplier]["address"],
             ]
         )
         by_id[f"r{ws.max_row}"] = l
-    for col, w in zip("ABCDEFGHIJKL", (11, 46, 30, 16, 44, 8, 11, 11, 13, 11, 22, 16), strict=True):
+    widths = (11, 46, 30, 16, 44, 8, 11, 11, 13, 11, 22, 16, 12, 11, 20, 20, 30)
+    for col, w in zip("ABCDEFGHIJKLMNOPQ", widths, strict=True):
         ws.column_dimensions[col].width = w
     path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(path)
     return by_id
+
+
+def records(lines: list[GenLine]) -> list[dict]:
+    """Строки в контракте выгрузки из 1С (integrations/contract.py) — как их шлёт обработка."""
+    return [
+        {
+            "date": l.d.isoformat(),
+            "doc": f"Поступление товаров и услуг {l.doc} от {l.d:%d.%m.%Y}",
+            "supplier": l.supplier,
+            "supplier_inn": SUPPLIERS[l.supplier][1],
+            "item": l.name,
+            "unit": l.unit,
+            "qty": str(l.qty),
+            "price": str(l.price),
+            "amount": str(l.amount),
+            "vat": str(_q(l.amount * VAT_RATE_KG / (1 + VAT_RATE_KG))),
+            "object": l.obj,
+            "responsible": l.who,
+            "doc_in_no": l.doc_in,
+            "doc_in_date": l.doc_in_date.isoformat() if l.doc_in_date else None,
+        }
+        for l in lines
+    ]
+
+
+def supplier_cards() -> list[dict]:
+    """Реквизиты поставщиков в контракте выгрузки (карточки контрагентов 1С)."""
+    return [{"name": n, "inn": SUPPLIERS[n][1], **CARDS[n]} for n in SUPPLIERS]
+
+
+def staff(salt: str) -> list[dict]:
+    """Сотрудники в контракте выгрузки: ИНН — только хэшем, как считает обработка 1С."""
+    from secondkey.engine.inn import inn_hash
+
+    return [{"name": x["name"], "role": x["role"], "inn_hash": inn_hash(salt, x["inn"])} for x in STAFF]
 
 
 def market_points(seed: int = 7) -> list[dict]:
@@ -826,7 +952,7 @@ def build(out_dir: Path, seed: int = 11) -> dict:
     instances: dict[str, dict] = {}
     for lid, l in by_id.items():
         over = l.amount if any(t.startswith("A5") for t in l.anomalies) else max(Decimal("0"), l.amount - l.fair_amount)
-        if not any(t in ("A1", "A2", "A3", "A8") or t.startswith("A5") for t in l.anomalies):
+        if not any(t in ("A1", "A2", "A3", "A8", "B1", "C1") or t.startswith("A5") for t in l.anomalies):
             over = Decimal("0")
         truth_lines[lid] = {"sku": l.sku, "anomalies": l.anomalies, "true_over": str(_q(over))}
         for t in l.anomalies:
@@ -834,7 +960,17 @@ def build(out_dir: Path, seed: int = 11) -> dict:
             inst = instances.setdefault(inst_id, {"type": t.split("-")[0], "line_ids": [], "true_over": Decimal("0")})
             inst["line_ids"].append(lid)
             inst["true_over"] += over
-    rule_of = {"A1": "P-01", "A2": "P-02", "A3": "P-03", "A4": "P-05", "A5": "P-06", "A6": "P-07", "A8": "P-01"}
+    rule_of = {
+        "A1": "P-01",
+        "A2": "P-02",
+        "A3": "P-03",
+        "A4": "P-05",
+        "A5": "P-06",
+        "A6": "P-07",
+        "A8": "P-01",
+        "B1": "P-01",
+        "C1": "P-03",
+    }
     truth = {
         "company": COMPANY,
         "lines": truth_lines,
@@ -842,6 +978,19 @@ def build(out_dir: Path, seed: int = 11) -> dict:
             k: {**v, "rule": rule_of[v["type"]], "true_over": str(_q(v["true_over"]))} for k, v in instances.items()
         },
         "approval_threshold": str(APPROVAL_THRESHOLD),
+        # подсаженные связки: пара и следы, которые должен найти engine/links.py
+        "links": {
+            "L-A": {
+                "supplier": "ИП Сыдыков А.Т.",
+                "responsible": "Асанов Б.",
+                "traces": ["L-01", "L-04", "L-09", "L-10"],
+            },
+            "L-B": {"supplier": B_SUPPLIER, "responsible": NEW_BUYER, "traces": ["L-01", "L-04", "L-05", "L-10"]},
+            "L-C1": {"supplier": "ИП Жумабаев Н.", "responsible": "Токтосунов Э.", "traces": ["L-11"]},
+            "L-C2": {"supplier": C_SUPPLIER, "responsible": "Токтосунов Э.", "traces": ["L-11"]},
+            "L-D": {"supplier": "ИП Бекова С.", "responsible": "Токтосунов Э.", "traces": ["L-12"]},
+        },
+        "staff": STAFF,
     }
     (out_dir / "truth.json").write_text(json.dumps(truth, ensure_ascii=False, indent=1), encoding="utf-8")
     with (out_dir / "market_raw.jsonl").open("w", encoding="utf-8") as f:

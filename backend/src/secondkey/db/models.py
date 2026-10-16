@@ -157,6 +157,8 @@ class PurchaseLine(IdMixin, Base):
     norm_status: Mapped[str] = mapped_column(String(16))
     norm_note: Mapped[str | None] = mapped_column(Text)
     overpayment: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"))
+    doc_in_no: Mapped[str | None] = mapped_column(String(64))  # входящий номер — счёт/накладная поставщика
+    doc_in_date: Mapped[date | None] = mapped_column(Date)
 
 
 class Finding(IdMixin, CreatedMixin, Base):
@@ -196,6 +198,30 @@ class FindingLine(Base):
     finding_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("findings.id", ondelete="CASCADE"), primary_key=True)
     line_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("purchase_lines.id", ondelete="CASCADE"), primary_key=True)
     overpayment: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"))
+
+
+class RunSupplier(IdMixin, Base):
+    """Досье поставщика за прогон: обороты, через кого покупали, ИНН, реквизиты, следы связок."""
+
+    __tablename__ = "run_suppliers"
+    __table_args__ = (Index("ix_run_suppliers_run_spend", "run_id", "spend"),)
+
+    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("audit_runs.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(300))
+    inn: Mapped[str | None] = mapped_column(String(32))
+    inn_kind: Mapped[str | None] = mapped_column(String(8))  # org | person — по номеру ИНН
+    inn_date: Mapped[date | None] = mapped_column(Date)  # регистрация юрлица / рождение физлица
+    spend: Mapped[Decimal] = mapped_column(Money)
+    lines: Mapped[int] = mapped_column(Integer)
+    share: Mapped[Decimal]
+    first_date: Mapped[date] = mapped_column(Date)
+    last_date: Mapped[date] = mapped_column(Date)
+    skus: Mapped[int] = mapped_column(Integer, default=0)
+    buyers: Mapped[list[Any]] = mapped_column(default=list)  # [{"name", "spend", "lines"}]
+    card: Mapped[dict[str, Any] | None] = mapped_column()  # телефон, e-mail, адрес, счёт
+    traces: Mapped[list[Any]] = mapped_column(default=list)  # все следы, в т.ч. не ставшие вопросом
+    linked: Mapped[bool] = mapped_column(Boolean, default=False)  # есть находка LINK
 
 
 class MarketPoint(IdMixin, CreatedMixin, Base):

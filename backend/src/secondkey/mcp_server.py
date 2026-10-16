@@ -296,15 +296,27 @@ def build_mcp() -> FastMCP:
 
     @mcp.tool()
     async def submit_purchases(
-        lines: list[dict[str, Any]], source: str = "mcp", period_start: str | None = None, period_end: str | None = None
+        lines: list[dict[str, Any]],
+        source: str = "mcp",
+        period_start: str | None = None,
+        period_end: str | None = None,
+        suppliers: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Отправить строки закупок (поля: date, doc, supplier, supplier_inn, item, unit, qty, price, amount, vat,
-        object, responsible, ref) — запускается проверка. Нужен токен с правом «push»."""
+        object, responsible, ref, doc_in_no, doc_in_date) — запускается проверка. suppliers — реквизиты поставщиков
+        из карточек контрагентов (name как в строках, inn, phone, email, address, bank_account): по ним видны
+        «конкуренты» с одним владельцем. Нужен токен с правом «push»."""
         ctx = _token.get()
         if not ctx or "push" not in ctx[1]:
             raise PermissionError("у токена нет права «push» — выдайте его в настройках «Второго ключа»")
         try:
-            payload = PurchasesIn(source=source, period_start=period_start, period_end=period_end, lines=lines)
+            payload = PurchasesIn(
+                source=source,
+                period_start=period_start,
+                period_end=period_end,
+                lines=lines,
+                suppliers=suppliers or [],
+            )
         except ValidationError as exc:
             raise ValueError(f"строки не прошли проверку: {exc.errors()[:5]}") from exc
         from secondkey.services.integrations import submit_purchases as submit
@@ -336,9 +348,12 @@ def build_mcp() -> FastMCP:
             "или «ПриобретениеТоваровУслуг» (УТ 11, ERP), табличная часть «Товары».\n"
             "2. Для каждой строки собери: date (ГГГГ-ММ-ДД), doc («Поступление … № от ДД.ММ.ГГГГ»), supplier и "
             "supplier_inn (контрагент), item (наименование номенклатуры как в 1С), unit, qty, price, amount "
-            "(сумма с НДС), vat, object (склад или объект), responsible (ответственный или менеджер), ref (GUID).\n"
-            "3. Не меняй наименования и цены — проверка сравнивает их как есть.\n"
-            "4. Отправь строки инструментом submit_purchases пачками до 5000 строк, затем дождись audit_status = done "
+            "(сумма с НДС), vat, object (склад или объект), responsible (ответственный или менеджер), ref (GUID), "
+            "doc_in_no и doc_in_date (входящие номер и дата документа поставщика).\n"
+            "3. По контрагентам из строк собери suppliers: name (как в строках), inn, phone, email, address "
+            "(из контактной информации), bank_account (основной расчётный счёт) — что найдётся.\n"
+            "4. Не меняй наименования и цены — проверка сравнивает их как есть.\n"
+            "5. Отправь строки инструментом submit_purchases пачками до 5000 строк, затем дождись audit_status = done "
             "и покажи audit_summary."
         )
 

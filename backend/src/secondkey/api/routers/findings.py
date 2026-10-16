@@ -36,6 +36,18 @@ async def _finding(session: AsyncSession, finding_id: uuid.UUID, member: Member)
     return f
 
 
+def _evidence(f: Finding, member: Member) -> dict:
+    """Следы связки (поведение, личность поставщика, сотрудники) — собственнику и финансам.
+
+    Остальным — только ценовые следы: снабженец видит вопрос о покупках, а не «досье» на себя.
+    """
+    ev = dict(f.evidence or {})
+    if f.code == "LINK" and member.role not in MANAGE:
+        ev["traces"] = [t for t in ev.get("traces", []) if t.get("group") == "price"]
+        ev["groups"] = ["price"] if ev["traces"] else []
+    return ev
+
+
 def _out(f: Finding) -> FindingOut:
     out = FindingOut.model_validate(f)
     out.lines_count = len(f.lines)
@@ -48,7 +60,7 @@ async def list_findings(
     member: CurrentMember,
     run_id: uuid.UUID | None = None,
     finding_status: Annotated[list[FindingStatus] | None, Query(alias="status")] = None,
-    code: Annotated[str | None, Query(pattern=r"^P-\d{2}$")] = None,
+    code: Annotated[str | None, Query(pattern=r"^(P-\d{2}|LINK)$")] = None,
     responsible: Annotated[str | None, Query(max_length=200)] = None,
     supplier: Annotated[str | None, Query(max_length=300)] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
@@ -89,7 +101,7 @@ async def get_finding(finding_id: uuid.UUID, session: Session, member: CurrentMe
     lines = [FindingLineOut(**_line_dict(r), finding_overpayment=share[r.id]) for r in rows]
     return FindingDetail(
         **_out(f).model_dump(),
-        evidence=f.evidence or {},
+        evidence=_evidence(f, member),
         lines=lines,
         answered_by=await _person(session, f.answered_by),
         decided_by=await _person(session, f.decided_by),

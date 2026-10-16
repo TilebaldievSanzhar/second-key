@@ -6,6 +6,10 @@
 
     БП 3.0 (в т.ч. редакции для КР/КЗ):  Document_ПоступлениеТоваровУслуг, ТЧ «Товары»
     УТ 11 / ERP / КА 2:                  Document_ПриобретениеТоваровУслуг, ТЧ «Товары»
+
+Для связок снабженца и поставщика (engine/links.py) забираются ещё входящие номер и дата документа и
+реквизиты контрагента (телефон, адрес, e-mail, основной расчётный счёт). Это необязательные поля: если в
+публикации их нет, выгрузка идёт без них.
 """
 
 from __future__ import annotations
@@ -31,6 +35,7 @@ class Profile:
     doc_fields: dict[str, str] = field(default_factory=dict)  # наше поле → поле документа
     line_fields: dict[str, str] = field(default_factory=dict)  # наше поле → поле строки ТЧ
     catalogs: dict[str, str] = field(default_factory=dict)  # наше поле → справочник для расшифровки ключа
+    optional_doc_fields: dict[str, str] = field(default_factory=dict)  # поля документа, без которых можно жить
 
 
 PROFILES: dict[str, Profile] = {
@@ -57,7 +62,9 @@ PROFILES: dict[str, Profile] = {
             "responsible": "Catalog_Пользователи",
             "item": "Catalog_Номенклатура",
             "unit": "Catalog_КлассификаторЕдиницИзмерения",
+            "bank_account": "Catalog_БанковскиеСчета",
         },
+        optional_doc_fields={"doc_in_no": "НомерВходящегоДокумента", "doc_in_date": "ДатаВходящегоДокумента"},
     ),
     "ut11": Profile(
         key="ut11",
@@ -82,7 +89,9 @@ PROFILES: dict[str, Profile] = {
             "responsible": "Catalog_Пользователи",
             "item": "Catalog_Номенклатура",
             "unit": "Catalog_УпаковкиЕдиницыИзмерения",
+            "bank_account": "Catalog_БанковскиеСчета",
         },
+        optional_doc_fields={"doc_in_no": "НомерВходящегоДокумента", "doc_in_date": "ДатаВходящегоДокумента"},
     ),
 }
 
@@ -102,6 +111,16 @@ def _dt(d: date, end: bool = False) -> str:
     return f"datetime'{d.isoformat()}T{'23:59:59' if end else '00:00:00'}'"
 
 
+def _date(v: Any) -> str | None:
+    """«2026-01-24T00:00:00» → «2026-01-24»; пустая дата 1С («0001-01-01…») → None."""
+    s = str(v or "")[:10]
+    return s if s and not s.startswith("0001") else None
+
+
+# тип строки контактной информации контрагента → поле карточки
+CONTACT_KINDS = {"Телефон": "phone", "АдресЭлектроннойПочты": "email", "Адрес": "address"}
+
+
 class OneCOData:
     def __init__(
         self,
@@ -116,6 +135,7 @@ class OneCOData:
         self.root = odata_root(base_url)
         self.profile = profile
         self.page = page
+        self.supplier_cards: list[dict[str, Any]] = []  # реквизиты поставщиков последней выгрузки
         self.http = httpx.AsyncClient(
             auth=httpx.BasicAuth(username, password),
             timeout=60,
@@ -153,8 +173,18 @@ class OneCOData:
         return None
 
     async def documents(self, start: date, end: date) -> list[dict[str, Any]]:
+        """Документы поступления; необязательные поля (входящий номер) — если они есть в публикации."""
+        if self.profile.optional_doc_fields:
+            try:
+                return await self._documents(start, end, optional=True)
+            except ODataError as exc:
+                log.info("onec.odata_optional_fields_skipped", error=str(exc)[:200])
+        return await self._documents(start, end, optional=False)
+
+    async def _documents(self, start: date, end: date, optional: bool) -> list[dict[str, Any]]:
         p = self.profile
-        select = ",".join(["Ref_Key", "Date", "Number", *p.doc_fields.values(), p.table])
+        extra = list(p.optional_doc_fields.values()) if optional else []
+        select = ",".join(["Ref_Key", "Date", "Number", *p.doc_fields.values(), *extra, p.table])
         flt = f"Date ge {_dt(start)} and Date le {_dt(end, True)} and Posted eq true and DeletionMark eq false"
         out: list[dict[str, Any]] = []
         skip = 0
@@ -193,13 +223,14 @@ class OneCOData:
                     keys[k].add(d.get(df[k]) or "")
             for ln in d.get(p.table) or []:
                 keys["item"].add(ln.get(lf["item"]) or "")
-        suppliers = await self._names(cat["supplier"], keys["supplier"], "ИНН")
+        suppliers = await self._suppliers(cat, keys["supplier"])
         objects = await self._names(cat["object"], keys["object"]) if df.get("object") else {}
         people = await self._names(cat["responsible"], keys["responsible"]) if df.get("responsible") else {}
         items = await self._names(cat["item"], keys["item"], "ЕдиницаИзмерения_Key")
         units = await self._names(cat["unit"], {i.get("ЕдиницаИзмерения_Key") or "" for i in items.values()})
 
         lines: list[dict[str, Any]] = []
+        of = p.optional_doc_fields
         for d in docs:
             sup = suppliers.get(d.get(df.get("supplier", "")) or "", {})
             when = datetime.fromisoformat(d["Date"]).date()
@@ -225,10 +256,40 @@ class OneCOData:
                         "object": objects.get(d.get(df.get("object", "")) or "", {}).get("Description"),
                         "responsible": people.get(d.get(df.get("responsible", "")) or "", {}).get("Description"),
                         "ref": d.get("Ref_Key"),
+                        "doc_in_no": (str(d.get(of.get("doc_in_no", "")) or "").strip() or None),
+                        "doc_in_date": _date(d.get(of.get("doc_in_date", ""))),
                     }
                 )
         log.info("onec.odata_pulled", profile=p.key, documents=len(docs), lines=len(lines))
         return lines
+
+    async def _suppliers(self, cat: dict[str, str], keys: set[str]) -> dict[str, dict[str, Any]]:
+        """Контрагенты с ИНН и, если опубликованы, контактной информацией и основным счётом → supplier_cards."""
+        try:
+            rows = await self._names(cat["supplier"], keys, "ИНН,КонтактнаяИнформация,ОсновнойБанковскийСчет_Key")
+        except ODataError as exc:
+            log.info("onec.odata_supplier_contacts_skipped", error=str(exc)[:200])
+            rows = await self._names(cat["supplier"], keys, "ИНН")
+        accounts: dict[str, dict[str, Any]] = {}
+        acc_keys = {r.get("ОсновнойБанковскийСчет_Key") or "" for r in rows.values()}
+        if cat.get("bank_account") and any(acc_keys):
+            try:
+                accounts = await self._names(cat["bank_account"], acc_keys, "НомерСчета")
+            except ODataError as exc:
+                log.info("onec.odata_bank_accounts_skipped", error=str(exc)[:200])
+        self.supplier_cards = []
+        for r in rows.values():
+            card: dict[str, Any] = {"name": r.get("Description") or "Поставщик не указан", "inn": r.get("ИНН") or None}
+            for ci in r.get("КонтактнаяИнформация") or []:
+                key = CONTACT_KINDS.get(str(ci.get("Тип") or ""))
+                if key and not card.get(key) and ci.get("Представление"):
+                    card[key] = str(ci["Представление"]).strip()[:200]
+            number = accounts.get(r.get("ОсновнойБанковскийСчет_Key") or "", {}).get("НомерСчета")
+            if number:
+                card["bank_account"] = str(number).strip()[:64]
+            if len(card) > 2:
+                self.supplier_cards.append(card)
+        return rows
 
 
 def _doc_title(p: Profile) -> str:
@@ -248,4 +309,5 @@ def profile_from_config(config: dict[str, Any]) -> Profile:
         doc_fields={**base.doc_fields, **over.get("doc_fields", {})},
         line_fields={**base.line_fields, **over.get("line_fields", {})},
         catalogs={**base.catalogs, **over.get("catalogs", {})},
+        optional_doc_fields={**base.optional_doc_fields, **over.get("optional_doc_fields", {})},
     )

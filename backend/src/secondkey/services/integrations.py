@@ -22,7 +22,7 @@ async def submit_purchases(
 ) -> AuditRun:
     """Строки из 1С (обработка, MCP, OData) → JSON-загрузка → прогон в очереди. Коммит и постановка — у вызывающего."""
     org = await session.get(Organization, org_id)
-    upload = await create_json_upload(session, org_id, user_id, payload.records(), payload.source)
+    upload = await create_json_upload(session, org_id, user_id, payload.records(), payload.source, payload.extra())
     return await create_run(session, org, upload, user_id)
 
 
@@ -85,10 +85,15 @@ async def sync_connection(
         secret = crypto.unseal(secret_blob)
         async with odata_client(config, secret, transport) as c:
             records = await c.purchases(start, end)
+            cards = c.supplier_cards
         if not records:
             raise ODataError(f"За {start:%d.%m.%Y}–{end:%d.%m.%Y} в 1С нет проведённых документов поступления")
         payload = PurchasesIn(
-            source=f"1c:{config.get('profile', 'bp30')}", period_start=start, period_end=end, lines=records
+            source=f"1c:{config.get('profile', 'bp30')}",
+            period_start=start,
+            period_end=end,
+            lines=records,
+            suppliers=cards,
         )
     except (ODataError, crypto.SecretsUnavailable, ValueError) as exc:
         await _mark(connection_id, "error", str(exc)[:1000])

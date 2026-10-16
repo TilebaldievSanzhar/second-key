@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import secrets
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +28,16 @@ async def create_org(session: AsyncSession, name: str, settings: dict | None = N
     session.add(org)
     await session.flush()
     return org
+
+
+def inn_salt(org: Organization) -> str:
+    """Соль для хэшей ИНН сотрудников (engine/inn.inn_hash): создаётся при первом обращении, не меняется —
+    иначе хэши из прошлых выгрузок перестанут совпадать. Флаш — у вызывающего."""
+    salt = (org.settings or {}).get("inn_salt")
+    if not salt:
+        salt = secrets.token_hex(16)
+        org.settings = {**(org.settings or {}), "inn_salt": salt}
+    return salt
 
 
 async def add_member(

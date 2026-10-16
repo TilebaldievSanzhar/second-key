@@ -44,6 +44,20 @@ class AuditConfig:
     split_near_threshold: Decimal = Decimal("0.8")  # каждая покупка ≥ 80% порога: «чуть ниже порога»
     approval_threshold: Decimal = Decimal("500000")
     unit_error_factor: Decimal = Decimal("8")
+    # связки снабженца и поставщика (engine/links.py)
+    link_min_lines: int = 3  # покупок пары, чтобы говорить о премии или эксклюзивности
+    link_exclusive_share: Decimal = Decimal("0.8")  # доля оборота поставщика через одного снабженца
+    link_came_with_days: int = 60  # поставщик появился не позже стольких дней после снабженца
+    link_new_buyer_days: int = 30  # снабженец «новый», если первая его покупка позже начала периода на столько
+    link_displace_share: Decimal = Decimal("0.4")  # доля позиции у нового поставщика после его появления
+    link_seq_min_docs: int = 6  # входящих документов поставщика для проверки нумерации
+    link_seq_max_step: int = 3  # медианный шаг номеров «почти подряд»
+    link_seq_min_share: Decimal = Decimal("0.5")  # доля номеров диапазона, выписанных вам
+    link_young_org_days: int = 365  # юрлицо моложе года на дату первой поставки
+    link_person_min_age: int = 23  # ИП моложе — признак номинала
+    link_person_max_age: int = 70
+    link_min_spend_share: Decimal = Decimal("0.005")  # следы личности — у поставщиков от 0,5% закупок
+    link_price_money_min: Decimal = Decimal("50000")  # ценовой след из P-01/P-02/P-03 — от этой суммы
 
 
 # поставщик рынка: (sku, дата, окно в днях) → цены за базовую единицу

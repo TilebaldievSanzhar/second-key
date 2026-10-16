@@ -11,6 +11,7 @@ export const RULE_TEXT: Record<string, string> = {
   "P-05": "Дробление закупки ниже порога согласования",
   "P-06": "Документ учтён дважды",
   "P-07": "Цена не сходится с единицей измерения",
+  LINK: "Связка снабженца и поставщика",
 };
 
 export const STATUS_TEXT: Record<FindingStatus, string> = {
@@ -42,8 +43,9 @@ export const REASONS = [
 ] as const;
 export type Reason = (typeof REASONS)[number];
 
-/** Правила без денег: сигнал процесса или учёта, а не переплата. */
-export const isSignal = (f: Pick<Finding, "overpayment">) => Number(f.overpayment) <= 0;
+/** Правила без денег: сигнал процесса или учёта, а не переплата. Связка денег не добавляет — её сумма справочно
+ * повторяет переплату ценовых вопросов по тем же строкам (engine/links.py), поэтому она тоже сигнал. */
+export const isSignal = (f: Pick<Finding, "overpayment" | "code">) => f.code === "LINK" || Number(f.overpayment) <= 0;
 
 type Evidence = Record<string, unknown>;
 const str = (v: unknown) => (typeof v === "string" ? v : undefined);
@@ -81,6 +83,9 @@ export function questionTitle(f: Finding & { evidence?: Evidence }): string {
     }
     case "P-07":
       return `Цена «${sku}» не сходится с единицей — ошибка в учёте?`;
+    case "LINK":
+      // вопрос о выборе поставщика, без выводов: его видит и снабженец
+      return f.sku_label ? `Как выбрали ${who} для закупок «${lower(f.sku_label)}»?` : `Как выбрали ${who}?`;
     default:
       return f.title;
   }

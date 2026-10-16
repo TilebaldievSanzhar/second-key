@@ -22,11 +22,12 @@ from secondkey.api.schemas import (
     TokenIn,
     TokenOut,
 )
-from secondkey.db.models import Connection, IntegrationToken
+from secondkey.db.models import Connection, IntegrationToken, Organization
 from secondkey.integrations import crypto, tokens
 from secondkey.integrations.contract import PurchasesIn
 from secondkey.integrations.onec_odata import ODataError
 from secondkey.services import integrations as svc
+from secondkey.services.orgs import inn_salt
 
 router = APIRouter(prefix="/integrations", tags=["integrations"])
 
@@ -83,9 +84,11 @@ async def revoke_token(token_id: uuid.UUID, session: Session, member: Member = r
 
 
 @router.get("/ping")
-async def ping(tok: Annotated[IntegrationToken, token_auth("push")]) -> dict[str, str]:
-    """Проверка связи из 1С: токен действителен."""
-    return {"status": "ok", "token": tok.name}
+async def ping(session: Session, tok: Annotated[IntegrationToken, token_auth("push")]) -> dict[str, str]:
+    """Проверка связи из 1С: токен действителен. inn_salt — соль для хэшей ИНН сотрудников (поле staff выгрузки)."""
+    org = await session.get(Organization, tok.org_id)
+    salt = inn_salt(org)
+    return {"status": "ok", "token": tok.name, "inn_salt": salt}
 
 
 @router.post("/purchases", response_model=SubmitOut, status_code=status.HTTP_202_ACCEPTED)
