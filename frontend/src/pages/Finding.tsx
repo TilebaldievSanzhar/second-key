@@ -3,13 +3,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
-import { ApiError, api, unwrap, type Finding, type FindingDetail, type FindingLine } from "../api/client";
+import { ApiError, api, unwrap, type Finding, type FindingDetail, type FindingLine, type Trace } from "../api/client";
+import { Alternatives } from "../components/Alternatives";
 import { Icon } from "../components/Icon";
 import { KeySeg, KeyStatus } from "../components/KeyPair";
 import { Money } from "../components/Money";
 import { PriceChart } from "../components/PriceChart";
 import { Empty, ErrorNote, Skeleton } from "../components/State";
 import { useToast } from "../components/Toast";
+import { TraceGroups, TraceList } from "../components/Traces";
 import {
   LINES,
   PER_UNIT,
@@ -20,23 +22,28 @@ import {
   dayMonth,
   docNumber,
   int,
+  moneyShort,
   price,
   qty,
+  share,
   unit as unitText,
 } from "../format";
 import {
-  DECISIONS,
   REASONS,
   RULE_TEXT,
-  STATUS_TEXT,
+  decisionsFor,
   explanation,
   isDecided,
   isSignal,
   questionTitle,
+  statusText,
   type Decision,
   type Reason,
 } from "../questions";
-import { canAnswer, canDecide, useRole, useRunFindings, waitingQueue } from "../session";
+import { canAnswer, canDecide, canSeeLinks, useRole, useRunFindings, useRunSuppliers, waitingQueue } from "../session";
+
+// «где дешевле» — у вопросов о цене и у связок; у дублей, дробления и ошибок единиц сравнивать не с чем
+const ALT_CODES = new Set(["P-01", "P-02", "P-03", "P-04", "LINK"]);
 
 export function FindingPage() {
   const { id = "" } = useParams();
@@ -92,6 +99,10 @@ function Card({ f }: { f: FindingDetail }) {
       unwrap(api.GET("/api/audits/{run_id}/price-history", { params: { path: { run_id: f.run_id }, query: { sku: f.sku! } } })),
   });
   const [note, setNote] = useState("");
+  const isLink = f.code === "LINK";
+  const decisions = decisionsFor(f.code);
+  const suppliers = useRunSuppliers(f.run_id, canSeeLinks(role) && !!f.supplier);
+  const supplierId = suppliers.data?.find((x) => x.name === f.supplier)?.id;
 
   // очередь разбора: собственнику — ждущие решения, снабжению — ждущие его ответа
   const items = useMemo(() => all.data ?? [], [all.data]);
@@ -126,7 +137,7 @@ function Card({ f }: { f: FindingDetail }) {
       ),
     onSuccess: (_, status) => {
       const next = inQueue >= 0 ? (queue[inQueue + 1] ?? queue[inQueue - 1]) : undefined;
-      const label = DECISIONS.find((d) => d.status === status)!.label;
+      const label = decisions.find((d) => d.status === status)!.label;
       refresh();
       toast({
         text: inQueue >= 0 ? `Вопрос ${inQueue + 1} из ${queue.length}: «${label}» · сохранено` : `Решение сохранено: «${label}»`,
@@ -153,7 +164,7 @@ function Card({ f }: { f: FindingDetail }) {
       if (e.key === "j") go(navList[pos + 1]);
       else if (e.key === "k") go(navList[pos - 1]);
       else if (canDecideNow && !decide.isPending) {
-        const d = DECISIONS.find((x) => x.key === e.key);
+        const d = decisions.find((x) => x.key === e.key);
         if (d) decide.mutate(d.status);
       }
     };
@@ -223,9 +234,17 @@ function Card({ f }: { f: FindingDetail }) {
             )}
             <h1 className="q-title">{questionTitle(f)}</h1>
             <p className="q-text">{explanation(f.message)}</p>
+            {supplierId && (
+              <Link className="q-supplier" to={`/suppliers/${supplierId}?run=${f.run_id}`}>
+                Карточка поставщика
+                <Icon name="arrowRight" size={14} strokeWidth={2} />
+              </Link>
+            )}
           </header>
 
           <Facts f={f} unit={u} buyer={buyer} />
+
+          {isLink && <LinkTraces f={f} buyer={buyer} />}
 
           {buyer && (
             <p className="note note-accent">
@@ -235,6 +254,7 @@ function Card({ f }: { f: FindingDetail }) {
           {buyer && canAnswer(role) && <AnswerBox f={f} queue={queue} />}
 
           {!buyer && chart}
+          {!buyer && ALT_CODES.has(f.code) && <Alternatives findingId={f.id} />}
 
           <section className="block keys-inline">
             <h2 className="block-title">Ключи</h2>
@@ -243,6 +263,7 @@ function Card({ f }: { f: FindingDetail }) {
           </section>
 
           {buyer && chart}
+          {buyer && ALT_CODES.has(f.code) && <Alternatives findingId={f.id} />}
 
           <Lines lines={f.lines} unit={u} total={f.overpayment} file={run.data?.filename} signal={isSignal(f)} />
         </div>
@@ -250,7 +271,7 @@ function Card({ f }: { f: FindingDetail }) {
         <aside className="card-aside">
           <KeyOne f={f} showReview={decider} />
           {canDecideNow ? (
-            <DecisionPanel note={note} setNote={setNote} onDecide={(d) => decide.mutate(d)} pending={decide.isPending} />
+            <DecisionPanel note={note} setNote={setNote} onDecide={(d) => decide.mutate(d)} pending={decide.isPending} decisions={decisions} />
           ) : (
             <KeyTwo f={f} decider={decider} onReopen={() => reopen.mutate()} reopening={reopen.isPending} />
           )}
@@ -262,14 +283,14 @@ function Card({ f }: { f: FindingDetail }) {
         <div className="decision-bar">
           <input className="input" placeholder="Комментарий, необязательно" value={note} onChange={(e) => setNote(e.target.value)} />
           <button type="button" className="btn btn-danger btn-lg" disabled={decide.isPending} onClick={() => decide.mutate("confirmed")}>
-            Переплата подтверждена
+            {decisions[0].label}
           </button>
           <div className="decision-row">
             <button type="button" className="btn btn-outline btn-lg" disabled={decide.isPending} onClick={() => decide.mutate("justified")}>
-              Обосновано
+              {decisions[1].label}
             </button>
             <button type="button" className="btn btn-secondary btn-lg" disabled={decide.isPending} onClick={() => decide.mutate("data_error")}>
-              Ошибка учёта
+              {decisions[2].label}
             </button>
           </div>
         </div>
@@ -279,6 +300,7 @@ function Card({ f }: { f: FindingDetail }) {
 }
 
 function Facts({ f, unit, buyer }: { f: FindingDetail; unit: string | null; buyer: boolean }) {
+  if (f.code === "LINK") return <LinkFacts f={f} buyer={buyer} />;
   const u = unitText(unit);
   const ev = (f.evidence ?? {}) as Record<string, unknown>;
   const cheaper = (ev.cheaper_suppliers as string[] | undefined)?.[0];
@@ -335,6 +357,62 @@ function Facts({ f, unit, buyer }: { f: FindingDetail; unit: string | null; buye
 }
 
 const decidedMuted = (f: Finding) => f.status === "justified" || f.status === "data_error";
+
+function LinkFacts({ f, buyer }: { f: FindingDetail; buyer: boolean }) {
+  const ev = (f.evidence ?? {}) as { spend?: string; pair_share?: string };
+  const dates = f.lines.map((l) => l.date).sort();
+  return (
+    <div className="facts">
+      <div className="fact fact-money">
+        <span className="fact-label">Оборот пары</span>
+        <Money value={ev.spend ?? null} size="xl" />
+        <span className="fact-sub">{ev.pair_share ? `${share(ev.pair_share)} оборота поставщика` : ""}</span>
+      </div>
+      <div className="fact">
+        <span className="fact-label">Ценовые вопросы по этим покупкам</span>
+        <span className="fact-value">{Number(f.overpayment) > 0 ? moneyShort(f.overpayment) : "нет"}</span>
+        <span className="fact-sub">{Number(f.overpayment) > 0 ? "уже в итоге — связка денег не добавляет" : "связка — вопрос о выборе поставщика"}</span>
+      </div>
+      <div className="fact">
+        <span className="fact-label">Покупки</span>
+        <span className="fact-value">{count(f.lines.length, LINES)}</span>
+        <span className="fact-sub">{dates.length ? `${dayMonth(dates[0])} — ${date(dates[dates.length - 1])}` : "—"}</span>
+      </div>
+      {!buyer && (
+        <div className="fact desktop-only">
+          <span className="fact-label">Ответственный</span>
+          <span className="fact-value">{f.responsible ?? "разные сотрудники"}</span>
+          <span className="fact-sub">{f.lines[0]?.object_name ?? ""}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Следы связки: собственнику — все три группы; снабженцу API отдаёт только ценовые
+function LinkTraces({ f, buyer }: { f: FindingDetail; buyer: boolean }) {
+  const ev = (f.evidence ?? {}) as { groups?: string[]; traces?: Trace[] };
+  const traces = ev.traces ?? [];
+  return (
+    <section className="block">
+      <div className="block-head">
+        <h2>{buyer ? "Что сравнивали" : "Следы связки"}</h2>
+        {!buyer && <TraceGroups groups={ev.groups ?? []} />}
+      </div>
+      {traces.length ? (
+        <TraceList traces={traces} />
+      ) : (
+        <p className="muted">Вопрос о выборе поставщика: объясните, почему закупки идут у него.</p>
+      )}
+      {!buyer && (
+        <p className="muted small">
+          Связка — вопрос, а не вывод. Снабженец видит только вопрос о покупках и цены, следы о поведении и о самом
+          поставщике — только вы и финансы.
+        </p>
+      )}
+    </section>
+  );
+}
 
 function KeyOne({ f, showReview = false }: { f: FindingDetail; showReview?: boolean }) {
   return (
@@ -410,7 +488,7 @@ function KeyTwo({
       </span>
       {decided ? (
         <>
-          <span className={`keycard-strong st-${f.status}`}>{STATUS_TEXT[f.status]}</span>
+          <span className={`keycard-strong st-${f.status}`}>{statusText(f.status, f.code)}</span>
           {f.decision_note && <p className="keycard-text">{f.decision_note}</p>}
           <span className="keycard-meta">
             {f.decided_by?.full_name} · {dateTime(f.decided_at)}
@@ -435,11 +513,13 @@ function DecisionPanel({
   setNote,
   onDecide,
   pending,
+  decisions,
 }: {
   note: string;
   setNote: (v: string) => void;
   onDecide: (d: Decision) => void;
   pending: boolean;
+  decisions: ReturnType<typeof decisionsFor>;
 }) {
   return (
     <div className="keycard keycard-active">
@@ -448,7 +528,7 @@ function DecisionPanel({
         Ключ 2 · Ваше решение
       </span>
       <div className="decide-list">
-        {DECISIONS.map((d) => (
+        {decisions.map((d) => (
           <button
             key={d.status}
             type="button"
@@ -469,7 +549,7 @@ function DecisionPanel({
 
 function History({ f }: { f: FindingDetail }) {
   const events = [
-    f.decided_at && { at: f.decided_at, text: `${f.decided_by?.full_name ?? "Собственник"}: «${STATUS_TEXT[f.status]}»` },
+    f.decided_at && { at: f.decided_at, text: `${f.decided_by?.full_name ?? "Собственник"}: «${statusText(f.status, f.code)}»` },
     f.answered_at && { at: f.answered_at, text: `${f.answered_by?.full_name ?? f.responsible ?? "Снабжение"} ответил` },
     { at: f.created_at, text: "вопрос создан проверкой" },
   ].filter((e): e is { at: string; text: string } => !!e);
@@ -562,8 +642,11 @@ function AnswerBox({ f, queue }: { f: FindingDetail; queue: Finding[] }) {
 
 function Lines({ lines, unit, total, file, signal }: { lines: FindingLine[]; unit: string | null; total: string; file?: string; signal: boolean }) {
   const [all, setAll] = useState(false);
-  const u = unitText(unit);
-  const volume = lines.reduce((a, l) => a + Number(l.qty_base ?? 0), 0);
+  const units = new Set(lines.map((l) => l.unit_base ?? unit));
+  const mixed = units.size > 1; // у связки — несколько позиций с разными единицами
+  const u = mixed ? "ед." : unitText(unit);
+  const lu = (l: FindingLine) => unitText(l.unit_base ?? unit) || l.unit_raw || "";
+  const volume = mixed ? 0 : lines.reduce((a, l) => a + Number(l.qty_base ?? 0), 0);
   const shown = all ? lines : lines.slice(0, 3);
   return (
     <section className="block">
@@ -583,7 +666,7 @@ function Lines({ lines, unit, total, file, signal }: { lines: FindingLine[]; uni
             <span>{l.item_raw}</span>
             <span className="lcard-row muted small num">
               <span>
-                {qty(l.qty_base ?? l.qty)} {u || l.unit_raw} × {int(l.price_base ?? l.price)} сом
+                {qty(l.qty_base ?? l.qty)} {lu(l)} × {int(l.price_base ?? l.price)} сом
               </span>
               <span className="mono">стр. {l.source_row}</span>
             </span>
@@ -637,7 +720,7 @@ function Lines({ lines, unit, total, file, signal }: { lines: FindingLine[]; uni
                   {l.item_raw}
                 </td>
                 <td className="r num">
-                  {qty(l.qty_base ?? l.qty)} {u}
+                  {qty(l.qty_base ?? l.qty)} {lu(l)}
                 </td>
                 <td className="r num" title={price(l.price_base ?? l.price)}>{int(l.price_base ?? l.price)}</td>
                 {!signal && <td className="r num over">{plus(l.finding_overpayment)}</td>}

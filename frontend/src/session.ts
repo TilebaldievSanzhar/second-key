@@ -15,6 +15,8 @@ export const canDecide = (r?: Role) => r === "owner" || r === "finance";
 export const canUpload = (r?: Role) => r === "owner" || r === "finance" || r === "accountant";
 export const canSeeAll = (r?: Role) => r !== undefined && r !== "buyer";
 export const canAnswer = (r?: Role) => r !== undefined && r !== "viewer";
+/** Связки и досье поставщиков — собственнику и финансам (следы о людях и поставщиках). */
+export const canSeeLinks = canDecide;
 
 export const ROLE_TEXT: Record<Role, string> = {
   owner: "Собственник",
@@ -59,6 +61,23 @@ export function useSummary(runId: string | undefined, enabled = true) {
     queryKey: ["summary", runId],
     enabled: !!runId && enabled,
     queryFn: () => unwrap(api.GET("/api/audits/{run_id}/summary", { params: { path: { run_id: runId! } } })),
+  });
+}
+
+export function useLinks(runId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ["links", runId],
+    enabled: !!runId && enabled,
+    queryFn: () => unwrap(api.GET("/api/audits/{run_id}/links", { params: { path: { run_id: runId! } } })),
+  });
+}
+
+/** Поставщики проверки (досье без позиций): найти карточку по имени из вопроса. */
+export function useRunSuppliers(runId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ["suppliers", runId],
+    enabled: !!runId && enabled,
+    queryFn: () => unwrap(api.GET("/api/audits/{run_id}/suppliers", { params: { path: { run_id: runId! } } })),
   });
 }
 

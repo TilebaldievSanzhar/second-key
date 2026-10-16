@@ -79,7 +79,7 @@ NEW_BUYER_FROM = 4  # месяц периода
 _SHARED_PHONE, _SHARED_ACCOUNT = "+996 555 41-27-09", "1180000123456789"
 CARDS: dict[str, dict[str, str]] = {
     name: {
-        "phone": f"+996 {550 + i % 9}{i:02d} {10 + i}-{20 + i}-{30 + i}",
+        "phone": f"+996 {550 + i % 9} {10 + i:02d}-{20 + i:02d}-{30 + i:02d}",
         "bank_account": f"12{i:02d}0000{987654 + i * 1111:08d}",
         "address": f"г. Бишкек, ул. Складская, {10 + i}",
     }

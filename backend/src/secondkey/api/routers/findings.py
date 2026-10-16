@@ -12,8 +12,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from secondkey import llm
 from secondkey.api.deps import ANSWER, MANAGE, CurrentMember, Member, Session, require
-from secondkey.api.schemas import AnswerIn, DecisionIn, FindingDetail, FindingLineOut, FindingOut, Page, PersonRef
-from secondkey.db.models import Finding, FindingStatus, PurchaseLine, Role, User
+from secondkey.api.schemas import (
+    AlternativesOut,
+    AnswerIn,
+    DecisionIn,
+    FindingDetail,
+    FindingLineOut,
+    FindingOut,
+    Page,
+    PersonRef,
+)
+from secondkey.db.models import AuditRun, Finding, FindingStatus, PurchaseLine, Role, User
+from secondkey.services import links_view
 from secondkey.worker.tasks import review_answer_task
 
 router = APIRouter(prefix="/findings", tags=["findings"])
@@ -106,6 +116,14 @@ async def get_finding(finding_id: uuid.UUID, session: Session, member: CurrentMe
         answered_by=await _person(session, f.answered_by),
         decided_by=await _person(session, f.decided_by),
     )
+
+
+@router.get("/{finding_id}/alternatives", response_model=AlternativesOut)
+async def alternatives(finding_id: uuid.UUID, session: Session, member: CurrentMember) -> AlternativesOut:
+    """Где дешевле по главным позициям вопроса — ваша история закупок и госзакупки; видит каждый, кому виден вопрос."""
+    f = await _finding(session, finding_id, member)
+    run = await session.get(AuditRun, f.run_id)
+    return AlternativesOut.model_validate(await links_view.alternatives(session, run, f))
 
 
 def _line_dict(r: PurchaseLine) -> dict:

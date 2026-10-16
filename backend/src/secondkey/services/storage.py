@@ -15,6 +15,7 @@ from secondkey.config import Settings, settings
 class Storage(Protocol):
     async def put(self, key: str, data: bytes, content_type: str | None = None) -> None: ...
     async def get(self, key: str) -> bytes: ...
+    async def exists(self, key: str) -> bool: ...
     async def ensure_ready(self) -> None: ...
 
 
@@ -35,6 +36,9 @@ class LocalStorage:
 
     async def get(self, key: str) -> bytes:
         return await asyncio.to_thread(self._path(key).read_bytes)
+
+    async def exists(self, key: str) -> bool:
+        return await asyncio.to_thread(self._path(key).exists)
 
     async def ensure_ready(self) -> None:
         await asyncio.to_thread(self.root.mkdir, parents=True, exist_ok=True)
@@ -66,6 +70,18 @@ class S3Storage:
             obj = await s3.get_object(Bucket=self.cfg.s3_bucket, Key=key)
             async with obj["Body"] as body:
                 return await body.read()
+
+    async def exists(self, key: str) -> bool:
+        from botocore.exceptions import ClientError
+
+        async with self._client() as s3:
+            try:
+                await s3.head_object(Bucket=self.cfg.s3_bucket, Key=key)
+            except ClientError as exc:
+                if exc.response.get("Error", {}).get("Code") in ("404", "NoSuchKey", "NotFound"):
+                    return False
+                raise
+            return True
 
     async def ensure_ready(self) -> None:
         async with self._client() as s3:

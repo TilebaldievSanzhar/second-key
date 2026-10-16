@@ -1,7 +1,7 @@
 // Два ключа: сегмент 1 — снабжение ответило, сегмент 2 — собственник решил.
 // Пусто — контур, ответ — заливка акцентом, решение — заливка по смыслу (штриховка — ошибка учёта).
 import type { FindingStatus } from "../api/client";
-import { STATUS_TEXT } from "../questions";
+import { statusText } from "../questions";
 
 type Size = "s" | "m" | "l";
 
@@ -17,11 +17,11 @@ export function KeyPair({ status, size = "m" }: { status: FindingStatus; size?: 
 }
 
 /** Ключи + статус словами: цвет никогда не единственный носитель смысла. */
-export function KeyStatus({ status, size = "s" }: { status: FindingStatus; size?: Size }) {
+export function KeyStatus({ status, size = "s", code }: { status: FindingStatus; size?: Size; code?: string }) {
   return (
     <span className={`keystatus st-${status}`}>
       <KeyPair status={status} size={size} />
-      <span>{STATUS_TEXT[status]}</span>
+      <span>{statusText(status, code)}</span>
     </span>
   );
 }

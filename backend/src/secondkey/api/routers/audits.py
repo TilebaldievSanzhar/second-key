@@ -22,12 +22,14 @@ from secondkey.api.schemas import (
     DigestOut,
     FindingCounts,
     LineOut,
+    LinksOverview,
     Page,
     PriceHistory,
     PricePoint,
     RunIn,
     RunOut,
     RunSummary,
+    SupplierDetail,
     SupplierOut,
     TimelineMonth,
 )
@@ -46,8 +48,8 @@ from secondkey.db.models import (
 )
 from secondkey.db.session import sessionmaker
 from secondkey.engine.report import RULE_TITLES
-from secondkey.services import progress
-from secondkey.services.audits import create_run, remember_mapping
+from secondkey.services import links_view, progress
+from secondkey.services.audits import basic_report_key, create_run, remember_mapping
 from secondkey.services.storage import get_storage
 from secondkey.worker.tasks import run_audit_task
 
@@ -250,6 +252,26 @@ async def suppliers(
     return [SupplierOut.model_validate(r) for r in rows]
 
 
+@router.get("/{run_id}/suppliers/{supplier_id}", response_model=SupplierDetail)
+async def supplier(
+    run_id: uuid.UUID, supplier_id: uuid.UUID, session: Session, member: Member = require(*MANAGE)
+) -> SupplierDetail:
+    """Досье поставщика: следы, реквизиты, через кого покупали, цены по позициям против других и рынка."""
+    run = await _run(session, run_id, member)
+    s = await session.get(RunSupplier, supplier_id)
+    if s is None or s.run_id != run.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Поставщик не найден в этой проверке")
+    extra = await links_view.supplier_detail(session, run, s)
+    return SupplierDetail(**SupplierOut.model_validate(s).model_dump(), **extra)
+
+
+@router.get("/{run_id}/links", response_model=LinksOverview)
+async def links(run_id: uuid.UUID, session: Session, member: Member = require(*MANAGE)) -> LinksOverview:
+    """Раздел «Связи»: матрица «снабженцы × поставщики» и вопросы-связки со следами (engine/links.py)."""
+    run = await _run(session, run_id, member)
+    return LinksOverview.model_validate(await links_view.links_overview(session, run))
+
+
 @router.get("/{run_id}/lines", response_model=Page[LineOut])
 async def lines(
     run_id: uuid.UUID,
@@ -332,7 +354,15 @@ async def report(
     run = await _run(session, run_id, member)
     if not run.report_key:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Отчёт ещё не готов")
-    html = await get_storage().get(run.report_key)
+    key = run.report_key
+    if member.role not in MANAGE:
+        # следы связок — собственнику и финансам; остальным — отчёт без них
+        storage = get_storage()
+        if await storage.exists(basic_report_key(run.report_key)):
+            key = basic_report_key(run.report_key)
+        elif await session.scalar(select(func.count()).where(Finding.run_id == run_id, Finding.code == "LINK")):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Отчёт со связками доступен собственнику и финансам")
+    html = await get_storage().get(key)
     headers = {"Content-Disposition": f'attachment; filename="second-key-audit-{run_id}.html"'} if download else {}
     return HTMLResponse(html.decode("utf-8"), headers=headers)
 
@@ -372,11 +402,19 @@ async def digest(run_id: uuid.UUID, session: Session, member: Member = require(*
                 Finding.run_id == run_id,
                 Finding.status.in_([FindingStatus.open, FindingStatus.answered]),
                 Finding.overpayment > 0,
+                Finding.code != "LINK",  # сумма связки повторяет ценовые вопросы
             )
             .order_by(Finding.overpayment.desc())
             .limit(3)
         )
     ).all()
+    links_open = await session.scalar(
+        select(func.count()).where(
+            Finding.run_id == run_id,
+            Finding.code == "LINK",
+            Finding.status.in_([FindingStatus.open, FindingStatus.answered]),
+        )
+    )
     share = (run.overpayment / run.spend * 100) if run.spend else Decimal(0)
     inputs = owner_digest.Inputs(
         company=org.name,
@@ -397,6 +435,7 @@ async def digest(run_id: uuid.UUID, session: Session, member: Member = require(*
             for f in top
         ],
         link=f"{settings.public_url.rstrip('/')}/",
+        links=links_open or 0,
     )
     text, by = await owner_digest_text(inputs)
     return DigestOut(text=text, by=by)

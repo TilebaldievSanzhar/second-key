@@ -65,7 +65,11 @@ def pct(v: Decimal | float | None, digits: int = 1) -> str:
     return f"{(Decimal(v) * 100).quantize(q, ROUND_HALF_UP)}%".replace(".", ",")
 
 
-def build_context(res: AuditResult, market_points: int = 0) -> dict:
+GROUP_RU = {"price": "цена", "behavior": "поведение", "identity": "поставщик"}
+
+
+def build_context(res: AuditResult, market_points: int = 0, links_detail: bool = True) -> dict:
+    """links_detail=False — отчёт без следов поведения и личности поставщика (для бухгалтера, наблюдателя)."""
     by_id = {nl.line_id: nl for nl in res.lines}
     spend = res.total_spend
     over = res.total_overpayment
@@ -128,7 +132,21 @@ def build_context(res: AuditResult, market_points: int = 0) -> dict:
         return rows
 
     money_findings = [f for f in res.findings if f.code in MONEY_RULES and f.overpayment > 0]
-    signals = [f for f in res.findings if f.code not in MONEY_RULES or f.overpayment == 0]
+    signals = [f for f in res.findings if f.code != "LINK" and (f.code not in MONEY_RULES or f.overpayment == 0)]
+    links = []
+    for f in res.findings:
+        if f.code != "LINK":
+            continue
+        traces = [t for t in f.evidence.get("traces", []) if links_detail or t.get("group") == "price"]
+        links.append(
+            {
+                "f": f,
+                "responsible": f.evidence.get("responsible"),
+                "spend": Decimal(str(f.evidence.get("spend") or 0)),
+                "groups": [GROUP_RU[g] for g in f.evidence.get("groups", []) if g in GROUP_RU],
+                "traces": [{**t, "group_ru": GROUP_RU.get(t.get("group"), "")} for t in traces],
+            }
+        )
     needs = [nl for nl in res.lines if nl.status == "needs_input"]
     ok = sum(1 for nl in res.lines if nl.status == "ok")
 
@@ -151,6 +169,8 @@ def build_context(res: AuditResult, market_points: int = 0) -> dict:
         "by_head": breakdown(lambda nl: (nl.head or "").capitalize() or None)[:12],
         "findings": [{"f": f, "rows": evidence(f)} for f in money_findings],
         "signals": [{"f": f, "rows": evidence(f)[:12]} for f in signals],
+        "links": links,
+        "links_detail": links_detail,
         "needs": needs[:40],
         "needs_count": len(needs),
         "warnings": res.warnings[:30],
@@ -159,12 +179,12 @@ def build_context(res: AuditResult, market_points: int = 0) -> dict:
     }
 
 
-def render_html(res: AuditResult, market_points: int = 0) -> str:
+def render_html(res: AuditResult, market_points: int = 0, links_detail: bool = True) -> str:
     env = Environment(loader=FileSystemLoader(TEMPLATES), autoescape=select_autoescape(["html"]))
     env.filters["money"] = money
     env.filters["pct"] = pct
     env.filters["qty"] = qty
-    return env.get_template("audit_report.html").render(**build_context(res, market_points))
+    return env.get_template("audit_report.html").render(**build_context(res, market_points, links_detail))
 
 
 def render_report(res: AuditResult, out_path: str | Path, market_points: int = 0) -> Path:

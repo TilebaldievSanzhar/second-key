@@ -1,6 +1,6 @@
 // Язык вопросов: правила словами, заголовок-вопрос из полей находки, статусы двух ключей.
 // Интерфейс задаёт вопрос, а не обвиняет (docs/design/FRONTEND_SPEC.md § 8).
-import type { Finding, FindingStatus } from "./api/client";
+import type { Finding, FindingStatus, Trace } from "./api/client";
 import { share } from "./format";
 
 export const RULE_TEXT: Record<string, string> = {
@@ -22,6 +22,10 @@ export const STATUS_TEXT: Record<FindingStatus, string> = {
   data_error: "Ошибка учёта",
 };
 
+/** Статус словами; у связки «подтверждено» — сама связка, а не переплата. */
+export const statusText = (s: FindingStatus, code?: string) =>
+  code === "LINK" && s === "confirmed" ? "Связка подтверждена" : STATUS_TEXT[s];
+
 export const WAITING: FindingStatus[] = ["open", "answered"];
 export const DECIDED: FindingStatus[] = ["confirmed", "justified", "data_error"];
 export const isDecided = (s: FindingStatus) => DECIDED.includes(s);
@@ -32,6 +36,93 @@ export const DECISIONS = [
   { status: "data_error", label: "Ошибка учёта", key: "3" },
 ] as const;
 export type Decision = (typeof DECISIONS)[number]["status"];
+
+// связка — вопрос о выборе поставщика: денег она не добавляет, подтверждается сама связка
+const LINK_DECISIONS = [
+  { status: "confirmed", label: "Связка подтверждена", key: "1" },
+  { status: "justified", label: "Обосновано", key: "2" },
+  { status: "data_error", label: "Ошибка учёта", key: "3" },
+] as const;
+export const decisionsFor = (code: string) => (code === "LINK" ? LINK_DECISIONS : DECISIONS);
+
+// --- связки снабженца и поставщика (engine/links.py) ---------------------------------------------
+
+export type TraceGroup = "price" | "behavior" | "identity";
+export const GROUPS: { key: TraceGroup; label: string; hint: string }[] = [
+  { key: "price", label: "Цена", hint: "переплата держится через этого снабженца" },
+  { key: "behavior", label: "Поведение", hint: "как поставщик появился и закрепился" },
+  { key: "identity", label: "Поставщик", hint: "что известно о самом поставщике" },
+];
+
+/** Короткие названия следов — заголовок над текстом следа. */
+export const TRACE_TEXT: Record<string, string> = {
+  "L-01": "Дороже, чем покупают коллеги",
+  "L-04": "Почти всё — через одного снабженца",
+  "L-05": "Пришёл вместе с новым снабженцем",
+  "L-06": "Вытеснил прежнего поставщика",
+  "L-09": "Вы — почти единственный клиент",
+  "L-10": "Возраст по номеру ИНН",
+  "L-11": "Общие реквизиты с другим поставщиком",
+  "L-12": "ИНН совпадает с ИНН сотрудника",
+  "P-01": "Дороже другого поставщика в те же недели",
+  "P-02": "Цена растёт быстрее рынка",
+  "P-03": "Дороже рынка",
+};
+
+const num = (v: unknown) => (typeof v === "number" ? v : typeof v === "string" && v !== "" ? Number(v) : NaN);
+const years = (days: number) => {
+  const y = Math.floor(days / 365.25);
+  const w = y % 10 === 1 && y % 100 !== 11 ? "год" : y % 10 >= 2 && y % 10 <= 4 && (y % 100 < 12 || y % 100 > 14) ? "года" : "лет";
+  return `${y} ${w}`;
+};
+
+/** Подписи следов группы: одинаковые следы по разным позициям сливаются в одну строку. */
+export function traceSummaries(traces: Trace[]): string[] {
+  const byCode = new Map<string, Trace[]>();
+  for (const t of traces) byCode.set(t.code, [...(byCode.get(t.code) ?? []), t]);
+  return [...byCode.entries()].map(([code, ts]) => {
+    if (ts.length === 1) return traceSummary(ts[0]!);
+    const f = ts.map((t) => (t.facts ?? {}) as Record<string, unknown>);
+    if (code === "L-06") {
+      const who = [...new Set(f.map((x) => x.displaced).filter((x): x is string => typeof x === "string"))].join(", ");
+      const p = f.map((x) => num(x.premium)).filter(Number.isFinite);
+      const range = p.length ? `, дороже на ${share(Math.min(...p))}–${share(Math.max(...p))}` : "";
+      return `Вытеснил ${who || "прежних поставщиков"} по ${ts.length} позициям${range}`;
+    }
+    if (code === "L-11") return `Общие реквизиты с ${f.map((x) => x.other).filter(Boolean).join(", ")}`;
+    return `${traceSummary(ts[0]!)} (и ещё ${ts.length - 1})`;
+  });
+}
+
+/** Подпись следа одной строкой: название и главное число из facts. */
+export function traceSummary(t: Trace): string {
+  const f = (t.facts ?? {}) as Record<string, unknown>;
+  switch (t.code) {
+    case "L-01":
+      return Number.isFinite(num(f.premium_median)) ? `Дороже, чем покупают коллеги, на ${share(num(f.premium_median))}` : TRACE_TEXT[t.code]!;
+    case "L-04":
+      return Number.isFinite(num(f.share)) ? `${share(num(f.share))} закупок — через одного снабженца` : TRACE_TEXT[t.code]!;
+    case "L-05":
+      return Number.isFinite(num(f.lag_days)) ? `Пришёл через ${num(f.lag_days)} дн. после нового снабженца` : TRACE_TEXT[t.code]!;
+    case "L-06":
+      return `Вытеснил ${typeof f.displaced === "string" ? f.displaced : "прежнего поставщика"}${Number.isFinite(num(f.premium)) ? `, дороже на ${share(num(f.premium))}` : ""}`;
+    case "L-09":
+      return Number.isFinite(num(f.ours)) ? `Номера счетов подряд: ${num(f.ours)} из ${num(f.span)} — ваши` : TRACE_TEXT[t.code]!;
+    case "L-10": {
+      const d = num(f.days_before_first);
+      if (!Number.isFinite(d)) return TRACE_TEXT[t.code]!;
+      return f.inn_kind === "org"
+        ? `Зарегистрирована за ${Math.max(1, Math.round(d / 30.4))} мес. до первой поставки`
+        : `ИП — ${years(d)} по номеру ИНН`;
+    }
+    case "L-11":
+      return typeof f.other === "string" ? `Общие реквизиты с ${f.other}` : TRACE_TEXT[t.code]!;
+    case "L-12":
+      return typeof f.staff === "string" ? `ИНН сотрудника: ${f.staff}${typeof f.role === "string" ? `, ${f.role}` : ""}` : TRACE_TEXT[t.code]!;
+    default:
+      return TRACE_TEXT[t.code] ?? t.code;
+  }
+}
 
 export const REASONS = [
   "Срочная поставка",

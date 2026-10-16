@@ -259,3 +259,63 @@ async def test_links_via_1c_push(org, as_user, app):
     for email in ("buyer@t.kg", "acc@t.kg", "viewer@t.kg"):
         c = await as_user(email)
         assert (await c.get(f"/api/audits/{run_id}/suppliers")).status_code == 403
+
+
+async def _push_demo(app, as_user) -> str:
+    acc = await as_user("acc@t.kg")
+    tok = (await acc.post("/api/integrations/tokens", json={"name": "1С", "scopes": ["push"]})).json()["token"]
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as raw:
+        h = {"Authorization": f"Bearer {tok}"}
+        salt = (await raw.get("/api/integrations/ping", headers=h)).json()["inn_salt"]
+        body = {
+            "source": "1c:bp30",
+            "lines": synthetic.records(synthetic.Generator(11).generate()),
+            "suppliers": synthetic.supplier_cards(),
+            "staff": synthetic.staff(salt),
+        }
+        r = await raw.post("/api/integrations/purchases", headers=h, json=body)
+        assert r.status_code == 202, r.text
+        return r.json()["run_id"]
+
+
+async def test_links_page_supplier_card_and_alternatives(org, as_user, app):
+    run_id = await _push_demo(app, as_user)
+    owner = await as_user("owner@t.kg")
+    ov = (await owner.get(f"/api/audits/{run_id}/links")).json()
+    assert ov["suppliers_total"] == len(ov["suppliers"]) and len(ov["links"]) >= 5
+    pair = next(c for c in ov["cells"] if c["supplier"] == "ИП Сыдыков А.Т." and c["buyer"] == "Асанов Б.")
+    assert pair["linked"] and {"L-01", "L-04"} <= set(pair["codes"]) and Decimal(pair["share"]) == 1
+    assert next(b for b in ov["buyers"] if b["name"] == "Мамытов Р.")["links"] >= 1
+    sy = next(link for link in ov["links"] if link["supplier"] == "ИП Сыдыков А.Т.")
+    assert sy["supplier_id"] and sy["groups"] == ["price", "behavior", "identity"]
+    for email in ("buyer@t.kg", "acc@t.kg", "viewer@t.kg"):
+        c = await as_user(email)
+        assert (await c.get(f"/api/audits/{run_id}/links")).status_code == 403
+        assert (await c.get(f"/api/audits/{run_id}/suppliers/{sy['supplier_id']}")).status_code == 403
+
+    card = (await owner.get(f"/api/audits/{run_id}/suppliers/{sy['supplier_id']}")).json()
+    rebar = next(i for i in card["items"] if i["label"].startswith("Арматура"))
+    assert Decimal(rebar["vs_others"]) > Decimal("0.1") and rebar["others_suppliers"] >= 1
+    zhuma = next(s for s in ov["suppliers"] if s["name"] == "ИП Жумабаев Н.")
+    shared = (await owner.get(f"/api/audits/{run_id}/suppliers/{zhuma['id']}")).json()["shared"]
+    assert shared[0]["other"] == synthetic.C_SUPPLIER and shared[0]["other_id"] and "phone" in shared[0]["fields"]
+    other_run = (await owner.get("/api/audits", params={"limit": 50})).json()["items"][-1]["id"]
+    assert (await owner.get(f"/api/audits/{other_run}/suppliers/{sy['supplier_id']}")).status_code == 404
+
+    alts = (await owner.get(f"/api/findings/{sy['finding_id']}/alternatives")).json()
+    g = alts["groups"][0]
+    assert g["supplier"] == "ИП Сыдыков А.Т." and g["current"]["price"]
+    assert any(o["supplier"] == "ОсОО «Темир Снаб»" and Decimal(o["delta"]) < 0 for o in g["options"])
+    buyer = await as_user("buyer@t.kg")  # Асанов: «где дешевле» по своему вопросу — да, по чужому — нет
+    assert (await buyer.get(f"/api/findings/{sy['finding_id']}/alternatives")).status_code == 200
+    bekova = next(link for link in ov["links"] if link["supplier"] == "ИП Бекова С.")
+    assert (await buyer.get(f"/api/findings/{bekova['finding_id']}/alternatives")).status_code == 404
+
+    full = (await owner.get(f"/api/audits/{run_id}/report")).text
+    acc = await as_user("acc@t.kg")
+    basic = (await acc.get(f"/api/audits/{run_id}/report")).text
+    assert "Связки снабженца и поставщика" in full and "Связки снабженца и поставщика" in basic
+    assert "по номеру ИНН" in full and "по номеру ИНН" not in basic and "прораб" not in basic
+
+    digest = (await owner.get(f"/api/audits/{run_id}/digest")).json()["text"]
+    assert f"Связки снабженца и поставщика: {len(ov['links'])}" in digest

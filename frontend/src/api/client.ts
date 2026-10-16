@@ -17,6 +17,14 @@ export type Member = Schemas["MemberOut"];
 export type PriceHistory = Schemas["PriceHistory"];
 export type PricePoint = Schemas["PricePoint"];
 export type Role = Schemas["Role"];
+export type LinksOverview = Schemas["LinksOverview"];
+export type LinkItem = Schemas["LinkOut"];
+export type MatrixCell = Schemas["MatrixCell"];
+export type Trace = Schemas["SupplierTrace"];
+export type Supplier = Schemas["SupplierOut"];
+export type SupplierDetail = Schemas["SupplierDetail"];
+export type Alternatives = Schemas["AlternativesOut"];
+export type AltGroup = Schemas["AltGroup"];
 
 export class ApiError extends Error {
   constructor(

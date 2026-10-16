@@ -60,6 +60,11 @@ DEFAULT_PARAMS: dict[str, str | int] = {
 }
 
 
+def basic_report_key(report_key: str) -> str:
+    """Отчёт без следов связок — для бухгалтера и наблюдателя (следы видят собственник и финансы)."""
+    return report_key.removesuffix(".html") + "-basic.html"
+
+
 class UserFacingError(Exception):
     """Ошибка с текстом для пользователя: что не так и как исправить."""
 
@@ -312,10 +317,12 @@ async def execute_run(run_id: uuid.UUID) -> None:
         await _set_stage(run_id, RunStatus.reporting, 80)
         await _persist(run_id, result, len(market))
         html = await asyncio.to_thread(render_html, result, len(market))
+        basic = await asyncio.to_thread(render_html, result, len(market), False)
         async with session_scope() as s:
             run = await s.get(AuditRun, run_id)
             report_key = f"org/{run.org_id}/runs/{run_id}/report.html"
         await get_storage().put(report_key, html.encode("utf-8"), "text/html; charset=utf-8")
+        await get_storage().put(basic_report_key(report_key), basic.encode("utf-8"), "text/html; charset=utf-8")
         await _set_stage(run_id, RunStatus.done, 100, report_key=report_key, finished_at=func.now())
         log.info(
             "audit.done",

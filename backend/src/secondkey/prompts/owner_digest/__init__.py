@@ -22,6 +22,7 @@ class Inputs(BaseModel):
     open: int
     top: list[Top] = Field(max_length=3)
     link: str
+    links: int = 0  # связки снабженца и поставщика, ждущие пояснения
 
 
 class Output(BaseModel):

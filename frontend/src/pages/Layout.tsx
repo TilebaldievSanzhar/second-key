@@ -9,11 +9,12 @@ import { ErrorBoundary, OfflineBar } from "../components/Resilience";
 import { Skeleton } from "../components/State";
 import { ToastProvider } from "../components/Toast";
 import { initials } from "../format";
-import { ROLE_TEXT, RunContext, canDecide, canSeeAll, pickRun, useMe, useRunFindings, useRuns } from "../session";
+import { ROLE_TEXT, RunContext, canDecide, canSeeAll, canSeeLinks, pickRun, useMe, useRunFindings, useRuns } from "../session";
 
 const NAV: { to: string; label: string; icon: IconName; end?: boolean }[] = [
   { to: "/", label: "Сводка", icon: "dashboard", end: true },
   { to: "/findings", label: "Вопросы", icon: "inbox" },
+  { to: "/links", label: "Связи", icon: "link" },
   { to: "/uploads", label: "Загрузки", icon: "upload" },
   { to: "/settings", label: "Настройки", icon: "sliders" },
 ];
@@ -50,7 +51,8 @@ export function Layout() {
     : role === "buyer"
       ? list.filter((f) => f.status === "open").length
       : 0;
-  const nav = seesAll ? NAV : [{ ...NAV[1]!, label: "Мои вопросы" }];
+  // «Связи» — собственнику и финансам: следы о поставщиках и сотрудниках
+  const nav = seesAll ? NAV.filter((n) => n.to !== "/links" || canSeeLinks(role)) : [{ ...NAV[1]!, label: "Мои вопросы" }];
 
   return (
     <RunContext.Provider value={ctx}>
@@ -79,7 +81,7 @@ export function Layout() {
             </ErrorBoundary>
           </main>
           {seesAll && (
-            <nav className="bottom-nav" aria-label="Разделы">
+            <nav className="bottom-nav" aria-label="Разделы" style={{ gridTemplateColumns: `repeat(${nav.length}, 1fr)` }}>
               {nav.map((n) => (
                 <NavLink key={n.to} to={n.to} end={n.end} className="bottom-link">
                   <span className="bottom-icon">

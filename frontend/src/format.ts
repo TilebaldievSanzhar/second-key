@@ -29,6 +29,21 @@ export function moneyShort(v: Num): string {
   return money(n);
 }
 
+/** Без «сом» — для тесных клеток: 8,5 млн · 620 тыс. · 45 тыс. · 900 */
+export function compact(v: Num): string {
+  if (!isNum(v)) return "—";
+  const n = Number(v);
+  if (Math.abs(n) >= 1e6) return `${nb((n >= 1e8 ? f0 : f1).format(n / 1e6))}${NBSP}млн`;
+  if (Math.abs(n) >= 1e3) return `${nb(f0.format(n / 1e3))}${NBSP}тыс.`;
+  return int(n);
+}
+
+const f1fixed = new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+/** Знаковая доля «−0.128» → «−12,8%», «0.05» → «+5,0%»: в колонке разниц — всегда один знак после запятой. */
+export const signedShare = (v: Num) =>
+  isNum(v) ? `${Number(v) > 0 ? "+" : Number(v) < 0 ? "−" : ""}${nb(f1fixed.format(Math.abs(Number(v)) * 100))}%` : "—";
+
 /** Количество и цены за единицу: до 3 знаков у количества, до 2 у цен. */
 export const qty = (v: Num) => (isNum(v) ? nb(f3.format(Number(v))) : "—");
 export const price = (v: Num) => (isNum(v) ? nb(f2.format(Number(v))) : "—");

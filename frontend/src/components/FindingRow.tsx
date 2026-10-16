@@ -6,6 +6,7 @@ import { RULE_TEXT, isSignal, meta, questionTitle } from "../questions";
 import { KeyStatus } from "./KeyPair";
 
 function Amount({ f }: { f: Finding }) {
+  if (f.code === "LINK") return <span className="row-amt row-amt-signal">связка</span>;
   if (isSignal(f)) return <span className="row-amt row-amt-signal">сигнал</span>;
   const tone = f.status === "confirmed" ? "confirmed" : f.status === "open" || f.status === "answered" ? "over" : "muted";
   return <span className={`row-amt row-amt-${tone}`}>{int(f.overpayment)}&nbsp;сом</span>;
@@ -32,7 +33,7 @@ export function FindingRow({
         </span>
         {showRule && <span className="frow-rule">{RULE_TEXT[f.code] ?? f.title}</span>}
         <span className="frow-key">
-          <KeyStatus status={f.status} />
+          <KeyStatus status={f.status} code={f.code} />
         </span>
         <Amount f={f} />
       </Link>

@@ -85,6 +85,7 @@ footer{margin-top:40px;padding-top:14px;border-top:1px solid var(--rule);font-si
     <div><span class="v">{{ skus }}</span><br><span class="l">позиций материалов</span></div>
     <div><span class="v">{{ suppliers }}</span><br><span class="l">поставщиков</span></div>
     <div><span class="v">{{ findings|length }}</span><br><span class="l">находок с оценкой денег</span></div>
+    {% if links %}<div><span class="v">{{ links|length }}</span><br><span class="l">связок снабженца и поставщика</span></div>{% endif %}
     <div><span class="v">{{ market_points }}</span><br><span class="l">рыночных цен в эталоне</span></div>
   </div>
 </section>
@@ -123,6 +124,27 @@ footer{margin-top:40px;padding-top:14px;border-top:1px solid var(--rule);font-si
     </tbody>
   </table></div>
 </div>
+
+{% if links %}
+<h2>Связки снабженца и поставщика</h2>
+<p class="note">Связка — вопрос, а не вывод: у пары «снабженец — поставщик» сошлись независимые следы
+в цене, поведении или в самом поставщике. Денег связка не добавляет — переплата по этим покупкам уже
+в находках ниже.{% if not links_detail %} Следы поведения и о самом поставщике видят собственник и
+финансовый директор.{% endif %}</p>
+{% for item in links %}{% set f = item.f %}
+<details class="finding"{% if loop.index <= 5 %} open{% endif %}>
+  <summary><span class="code sev-{{ f.severity }}">связка</span>
+    <span class="msg">{{ item.responsible or 'разные сотрудники' }} ↔ {{ f.supplier }}<small>следы: {{ item.groups|join(', ') }} · оборот пары {{ item.spend|money }} сом</small></span>
+    <span class="amt muted">—</span></summary>
+  <div class="tbl"><table>
+    <thead><tr><th>След</th><th>Что увидели</th></tr></thead>
+    <tbody>
+    {% for t in item.traces %}<tr><td>{{ t.group_ru }}<br><span class="muted">{{ t.code }}</span></td><td>{{ t.text }}</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</details>
+{% endfor %}
+{% endif %}
 
 <h2>Находки с оценкой денег</h2>
 {% for item in findings %}{% set f = item.f %}

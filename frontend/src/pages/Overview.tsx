@@ -11,10 +11,11 @@ import { Money } from "../components/Money";
 import { RunPicker } from "../components/RunPicker";
 import { StageProgress } from "../components/StageProgress";
 import { TimelineChart } from "../components/TimelineChart";
+import { TraceGroups } from "../components/Traces";
 import { useToast } from "../components/Toast";
 import { Empty, ErrorNote, Skeleton } from "../components/State";
 import { LINES, QUESTIONS, count, date, dayMonth, int, moneyShort, pct } from "../format";
-import { canUpload, useCurrentRun, useRole, useRunFindings, useSummary, waitingQueue } from "../session";
+import { canSeeLinks, canUpload, useCurrentRun, useLinks, useRole, useRunFindings, useSummary, waitingQueue } from "../session";
 import { MobileHead } from "./Layout";
 
 const CUTS: Cut[] = ["supplier", "responsible", "material", "rule"];
@@ -63,7 +64,9 @@ export function OverviewPage() {
 
   const s = summary.data;
   const queue = waitingQueue(findings.data);
-  const top = (findings.data ?? []).filter((f) => f.status === "open" || f.status === "answered").slice(0, 5);
+  const top = (findings.data ?? [])
+    .filter((f) => (f.status === "open" || f.status === "answered") && !(f.code === "LINK" && canSeeLinks(role)))
+    .slice(0, 5);
   const start = () => (queue[0] ? navigate(`/findings/${queue[0].id}`) : navigate("/findings"));
 
   return (
@@ -139,6 +142,8 @@ export function OverviewPage() {
         </div>
       </div>
 
+      {canSeeLinks(role) && <LinksTeaser runId={s.run.id} />}
+
       <div className="ov-grid">
       <section className="block">
         <div className="block-head">
@@ -164,6 +169,41 @@ export function OverviewPage() {
       <div className="mobile-only">
         <DigestButton runId={s.run.id} />
       </div>
+    </section>
+  );
+}
+
+// Связки на сводке — коротко: три крупнейшие пары и путь в раздел «Связи»
+function LinksTeaser({ runId }: { runId: string }) {
+  const q = useLinks(runId);
+  const links = q.data?.links ?? [];
+  if (!links.length) return null;
+  const waiting = links.filter((l) => l.status === "open" || l.status === "answered").length;
+  return (
+    <section className="block links-teaser">
+      <div className="block-head">
+        <h2>
+          Связки снабженцев и поставщиков <span className="muted">· {waiting} ждут пояснения</span>
+        </h2>
+        <Link to="/links">Все связки · {links.length}</Link>
+      </div>
+      <ul className="lt-list">
+        {links.slice(0, 3).map((l) => (
+          <li key={l.finding_id}>
+            <Link to={`/findings/${l.finding_id}`} className="lt-row">
+              <span className="lt-pair">
+                {l.responsible ?? "Разные сотрудники"}
+                <Icon name="link" size={14} strokeWidth={2.2} />
+                {l.supplier}
+              </span>
+              <TraceGroups groups={l.groups} size="s" />
+              <span className="lt-status">
+                <KeyPair status={l.status} size="s" />
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

@@ -644,7 +644,14 @@ def _finding(data: _Data, supplier: str, a: str | None, share: Decimal, traces: 
     money = max([t.money for t in price], default=D0)
     groups = sorted({t.group for t in traces}, key=["price", "behavior", "identity"].index)
     strong = any(t.code == "L-12" for t in traces) or len(groups) == 3 or money >= Decimal("1000000")
-    sku = Counter(n.sku_label for n in rows if n.sku_label).most_common(1)
+    # главная позиция пары — по обороту: по ней график цены и «где дешевле» в карточке вопроса
+    by_sku: dict[str, Decimal] = defaultdict(lambda: D0)
+    label: dict[str, str] = {}
+    for n in rows:
+        if n.sku:
+            by_sku[n.sku] += n.line.amount
+            label.setdefault(n.sku, n.sku_label or n.sku)
+    main_sku = max(by_sku, key=lambda k: by_sku[k]) if by_sku else None
     who = f"оформлял в основном {a}" if a else "оформляли разные сотрудники"
     lead = f"Закупки у {_q(supplier)} {who}: {_purchases(len(rows))} на {_fmt(spend)} сом"
     # снабженцу — только факты о покупках: ценовые следы; остальное — в evidence для собственника
@@ -657,8 +664,8 @@ def _finding(data: _Data, supplier: str, a: str | None, share: Decimal, traces: 
         message=message,
         line_ids=[n.line_id for n in rows],
         overpayment=money,
-        sku=None,
-        sku_label=sku[0][0] if sku else None,
+        sku=main_sku,
+        sku_label=label.get(main_sku) if main_sku else None,
         supplier=supplier,
         reference_kind="link",
         evidence={

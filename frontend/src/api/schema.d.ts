@@ -284,6 +284,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/audits/{run_id}/suppliers/{supplier_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Supplier
+         * @description Досье поставщика: следы, реквизиты, через кого покупали, цены по позициям против других и рынка.
+         */
+        get: operations["supplier_api_audits__run_id__suppliers__supplier_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/audits/{run_id}/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Links
+         * @description Раздел «Связи»: матрица «снабженцы × поставщики» и вопросы-связки со следами (engine/links.py).
+         */
+        get: operations["links_api_audits__run_id__links_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/audits/{run_id}/lines": {
         parameters: {
             query?: never;
@@ -404,6 +444,26 @@ export interface paths {
         };
         /** Get Finding */
         get: operations["get_finding_api_findings__finding_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/findings/{finding_id}/alternatives": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Alternatives
+         * @description Где дешевле по главным позициям вопроса — ваша история закупок и госзакупки; видит каждый, кому виден вопрос.
+         */
+        get: operations["alternatives_api_findings__finding_id__alternatives_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -684,6 +744,87 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AltGroup */
+        AltGroup: {
+            /** Sku */
+            sku: string;
+            /** Label */
+            label: string;
+            /** Unit */
+            unit: string | null;
+            /** Supplier */
+            supplier: string | null;
+            current: components["schemas"]["AltQuote"] | null;
+            /** Options */
+            options: components["schemas"]["AltOption"][];
+            market: components["schemas"]["AltMarket"] | null;
+        };
+        /** AltMarket */
+        AltMarket: {
+            /** Price */
+            price: string | null;
+            /** Points */
+            points: number;
+            /**
+             * Last Date
+             * Format: date
+             */
+            last_date: string;
+            /** Recent */
+            recent: boolean;
+            /** Delta */
+            delta: string | null;
+        };
+        /** AltOption */
+        AltOption: {
+            /** Price */
+            price: string | null;
+            /** Lines */
+            lines: number;
+            /**
+             * Last Date
+             * Format: date
+             */
+            last_date: string;
+            /** Recent */
+            recent: boolean;
+            /** Supplier */
+            supplier: string;
+            /** Delta */
+            delta: string | null;
+        };
+        /** AltQuote */
+        AltQuote: {
+            /** Price */
+            price: string | null;
+            /** Lines */
+            lines: number;
+            /**
+             * Last Date
+             * Format: date
+             */
+            last_date: string;
+            /** Recent */
+            recent: boolean;
+        };
+        /**
+         * AlternativesOut
+         * @description «Где дешевле» по главным позициям вопроса: ваша история и госзакупки.
+         */
+        AlternativesOut: {
+            /**
+             * Window Start
+             * Format: date
+             */
+            window_start: string;
+            /**
+             * Window End
+             * Format: date
+             */
+            window_end: string;
+            /** Groups */
+            groups: components["schemas"]["AltGroup"][];
+        };
         /** AnswerIn */
         AnswerIn: {
             /** Answer */
@@ -1105,6 +1246,91 @@ export interface components {
             /** Doc In Date */
             doc_in_date?: string | null;
         };
+        /** LinkBuyer */
+        LinkBuyer: {
+            /** Name */
+            name: string | null;
+            /** Spend */
+            spend: string;
+            /** Lines */
+            lines: number;
+            /** Suppliers */
+            suppliers: number;
+            /** Links */
+            links: number;
+        };
+        /**
+         * LinkOut
+         * @description Связка — находка LINK: пара «снабженец — поставщик» и сошедшиеся следы.
+         */
+        LinkOut: {
+            /**
+             * Finding Id
+             * Format: uuid
+             */
+            finding_id: string;
+            /** Supplier */
+            supplier: string | null;
+            /** Supplier Id */
+            supplier_id: string | null;
+            /** Responsible */
+            responsible: string | null;
+            status: components["schemas"]["FindingStatus"];
+            /** Severity */
+            severity: string;
+            /** Overpayment */
+            overpayment: string;
+            /** Sku Label */
+            sku_label: string | null;
+            /** Pair Spend */
+            pair_spend: string;
+            /** Pair Share */
+            pair_share: string;
+            /** Groups */
+            groups: string[];
+            /** Traces */
+            traces: components["schemas"]["SupplierTrace"][];
+        };
+        /** LinkSupplier */
+        LinkSupplier: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Spend */
+            spend: string;
+            /** Share */
+            share: string;
+            /** Inn Kind */
+            inn_kind: string | null;
+            /** Inn Date */
+            inn_date: string | null;
+            /** Linked */
+            linked: boolean;
+            /** Groups */
+            groups: string[];
+            /** Traces */
+            traces: components["schemas"]["SupplierTrace"][];
+        };
+        /**
+         * LinksOverview
+         * @description Раздел «Связи»: снабженцы, поставщики, матрица оборотов и вопросы-связки.
+         */
+        LinksOverview: {
+            /** Suppliers Total */
+            suppliers_total: number;
+            /** Buyers */
+            buyers: components["schemas"]["LinkBuyer"][];
+            /** Suppliers */
+            suppliers: components["schemas"]["LinkSupplier"][];
+            /** Cells */
+            cells: components["schemas"]["MatrixCell"][];
+            /** Links */
+            links: components["schemas"]["LinkOut"][];
+        };
         /** LoginIn */
         LoginIn: {
             /**
@@ -1114,6 +1340,25 @@ export interface components {
             email: string;
             /** Password */
             password: string;
+        };
+        /** MatrixCell */
+        MatrixCell: {
+            /** Supplier */
+            supplier: string;
+            /** Supplier Id */
+            supplier_id: string | null;
+            /** Buyer */
+            buyer: string | null;
+            /** Spend */
+            spend: string;
+            /** Lines */
+            lines: number;
+            /** Share */
+            share: string;
+            /** Codes */
+            codes: string[];
+            /** Linked */
+            linked: boolean;
         };
         /** MeOut */
         MeOut: {
@@ -1492,6 +1737,15 @@ export interface components {
             /** By Material */
             by_material: components["schemas"]["BreakdownRow"][];
         };
+        /** SharedRequisite */
+        SharedRequisite: {
+            /** Other */
+            other: string | null;
+            /** Other Id */
+            other_id: string | null;
+            /** Fields */
+            fields: string[];
+        };
         /**
          * StaffIn
          * @description Сотрудник: ИНН — только хэшем SHA-256 от «соль:ИНН» (соль — в ответе /integrations/ping).
@@ -1562,6 +1816,51 @@ export interface components {
             /** Bank Account */
             bank_account?: string | null;
         };
+        /** SupplierDetail */
+        SupplierDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Inn */
+            inn: string | null;
+            /** Inn Kind */
+            inn_kind: string | null;
+            /** Inn Date */
+            inn_date: string | null;
+            /** Spend */
+            spend: string;
+            /** Lines */
+            lines: number;
+            /** Share */
+            share: string;
+            /**
+             * First Date
+             * Format: date
+             */
+            first_date: string;
+            /**
+             * Last Date
+             * Format: date
+             */
+            last_date: string;
+            /** Skus */
+            skus: number;
+            /** Buyers */
+            buyers: components["schemas"]["SupplierBuyer"][];
+            card: components["schemas"]["SupplierCardOut"] | null;
+            /** Traces */
+            traces: components["schemas"]["SupplierTrace"][];
+            /** Linked */
+            linked: boolean;
+            /** Items */
+            items: components["schemas"]["SupplierItem"][];
+            /** Shared */
+            shared: components["schemas"]["SharedRequisite"][];
+        };
         /**
          * SupplierIn
          * @description Реквизиты поставщика из карточки контрагента: по ним видно «конкурентов» с одним владельцем.
@@ -1585,6 +1884,33 @@ export interface components {
              * @description Основной расчётный счёт
              */
             bank_account?: string | null;
+        };
+        /** SupplierItem */
+        SupplierItem: {
+            /** Sku */
+            sku: string;
+            /** Label */
+            label: string;
+            /** Unit */
+            unit: string | null;
+            /** Lines */
+            lines: number;
+            /** Spend */
+            spend: string;
+            /** Price */
+            price: string | null;
+            /** Others */
+            others: string | null;
+            /** Others Suppliers */
+            others_suppliers: number;
+            /** Market */
+            market: string | null;
+            /** Market Points */
+            market_points: number;
+            /** Vs Others */
+            vs_others: string | null;
+            /** Vs Market */
+            vs_market: string | null;
         };
         /**
          * SupplierOut
@@ -2345,6 +2671,73 @@ export interface operations {
             };
         };
     };
+    supplier_api_audits__run_id__suppliers__supplier_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-org-id"?: string | null;
+            };
+            path: {
+                run_id: string;
+                supplier_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupplierDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    links_api_audits__run_id__links_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-org-id"?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinksOverview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     lines_api_audits__run_id__lines_get: {
         parameters: {
             query?: {
@@ -2579,6 +2972,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FindingDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    alternatives_api_findings__finding_id__alternatives_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-org-id"?: string | null;
+            };
+            path: {
+                finding_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlternativesOut"];
                 };
             };
             /** @description Validation Error */

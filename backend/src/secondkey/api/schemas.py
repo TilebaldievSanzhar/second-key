@@ -269,6 +269,128 @@ class SupplierOut(Out):
     linked: bool
 
 
+class LinkOut(BaseModel):
+    """Связка — находка LINK: пара «снабженец — поставщик» и сошедшиеся следы."""
+
+    finding_id: uuid.UUID
+    supplier: str | None
+    supplier_id: uuid.UUID | None
+    responsible: str | None
+    status: FindingStatus
+    severity: str
+    overpayment: Decimal  # справочно: ценовые вопросы по строкам пары, в итог уже вошли
+    sku_label: str | None
+    pair_spend: Decimal
+    pair_share: Decimal
+    groups: list[str]
+    traces: list[SupplierTrace]
+
+
+class MatrixCell(BaseModel):
+    supplier: str
+    supplier_id: uuid.UUID | None
+    buyer: str | None  # None — строки без ответственного
+    spend: Decimal
+    lines: int
+    share: Decimal  # доля оборота поставщика через этого снабженца
+    codes: list[str]  # следы пары (L-01, L-04, L-05, L-06)
+    linked: bool  # по паре задан вопрос LINK
+
+
+class LinkBuyer(BaseModel):
+    name: str | None
+    spend: Decimal
+    lines: int
+    suppliers: int
+    links: int
+
+
+class LinkSupplier(BaseModel):
+    id: uuid.UUID
+    name: str
+    spend: Decimal
+    share: Decimal
+    inn_kind: str | None
+    inn_date: date | None
+    linked: bool
+    groups: list[str]
+    traces: list[SupplierTrace]
+
+
+class LinksOverview(BaseModel):
+    """Раздел «Связи»: снабженцы, поставщики, матрица оборотов и вопросы-связки."""
+
+    suppliers_total: int
+    buyers: list[LinkBuyer]
+    suppliers: list[LinkSupplier]
+    cells: list[MatrixCell]
+    links: list[LinkOut]
+
+
+class SupplierItem(BaseModel):
+    sku: str
+    label: str
+    unit: str | None
+    lines: int
+    spend: Decimal
+    price: Decimal | None  # медиана цены за базовую единицу у этого поставщика
+    others: Decimal | None  # у других поставщиков в те же месяцы
+    others_suppliers: int
+    market: Decimal | None  # госзакупки в те же месяцы
+    market_points: int
+    vs_others: Decimal | None
+    vs_market: Decimal | None
+
+
+class SharedRequisite(BaseModel):
+    other: str | None
+    other_id: uuid.UUID | None
+    fields: list[str]
+
+
+class SupplierDetail(SupplierOut):
+    items: list[SupplierItem]
+    shared: list[SharedRequisite]
+
+
+class AltQuote(BaseModel):
+    price: Decimal | None
+    lines: int
+    last_date: date
+    recent: bool  # покупки за последние три месяца; иначе — последние три цены
+
+
+class AltOption(AltQuote):
+    supplier: str
+    delta: Decimal | None  # к цене поставщика вопроса: −0,12 — на 12% дешевле
+
+
+class AltMarket(BaseModel):
+    price: Decimal | None
+    points: int
+    last_date: date
+    recent: bool
+    delta: Decimal | None
+
+
+class AltGroup(BaseModel):
+    sku: str
+    label: str
+    unit: str | None
+    supplier: str | None
+    current: AltQuote | None
+    options: list[AltOption]
+    market: AltMarket | None
+
+
+class AlternativesOut(BaseModel):
+    """«Где дешевле» по главным позициям вопроса: ваша история и госзакупки."""
+
+    window_start: date
+    window_end: date
+    groups: list[AltGroup]
+
+
 class PersonRef(BaseModel):
     id: uuid.UUID
     full_name: str

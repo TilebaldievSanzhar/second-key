@@ -954,6 +954,138 @@
         }
       }
     },
+    "/api/audits/{run_id}/suppliers/{supplier_id}": {
+      "get": {
+        "tags": [
+          "audits"
+        ],
+        "summary": "Supplier",
+        "description": "Досье поставщика: следы, реквизиты, через кого покупали, цены по позициям против других и рынка.",
+        "operationId": "supplier_api_audits__run_id__suppliers__supplier_id__get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "supplier_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Supplier Id"
+            }
+          },
+          {
+            "name": "x-org-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/audits/{run_id}/links": {
+      "get": {
+        "tags": [
+          "audits"
+        ],
+        "summary": "Links",
+        "description": "Раздел «Связи»: матрица «снабженцы × поставщики» и вопросы-связки со следами (engine/links.py).",
+        "operationId": "links_api_audits__run_id__links_get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "x-org-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinksOverview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/audits/{run_id}/lines": {
       "get": {
         "tags": [
@@ -1558,6 +1690,67 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/FindingDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/findings/{finding_id}/alternatives": {
+      "get": {
+        "tags": [
+          "findings"
+        ],
+        "summary": "Alternatives",
+        "description": "Где дешевле по главным позициям вопроса — ваша история закупок и госзакупки; видит каждый, кому виден вопрос.",
+        "operationId": "alternatives_api_findings__finding_id__alternatives_get",
+        "parameters": [
+          {
+            "name": "finding_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Finding Id"
+            }
+          },
+          {
+            "name": "x-org-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlternativesOut"
                 }
               }
             }
@@ -2566,6 +2759,244 @@
   },
   "components": {
     "schemas": {
+      "AltGroup": {
+        "properties": {
+          "sku": {
+            "type": "string",
+            "title": "Sku"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "supplier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier"
+          },
+          "current": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AltQuote"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/AltOption"
+            },
+            "type": "array",
+            "title": "Options"
+          },
+          "market": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AltMarket"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "sku",
+          "label",
+          "unit",
+          "supplier",
+          "current",
+          "options",
+          "market"
+        ],
+        "title": "AltGroup"
+      },
+      "AltMarket": {
+        "properties": {
+          "price": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          },
+          "points": {
+            "type": "integer",
+            "title": "Points"
+          },
+          "last_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Last Date"
+          },
+          "recent": {
+            "type": "boolean",
+            "title": "Recent"
+          },
+          "delta": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta"
+          }
+        },
+        "type": "object",
+        "required": [
+          "price",
+          "points",
+          "last_date",
+          "recent",
+          "delta"
+        ],
+        "title": "AltMarket"
+      },
+      "AltOption": {
+        "properties": {
+          "price": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          },
+          "lines": {
+            "type": "integer",
+            "title": "Lines"
+          },
+          "last_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Last Date"
+          },
+          "recent": {
+            "type": "boolean",
+            "title": "Recent"
+          },
+          "supplier": {
+            "type": "string",
+            "title": "Supplier"
+          },
+          "delta": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta"
+          }
+        },
+        "type": "object",
+        "required": [
+          "price",
+          "lines",
+          "last_date",
+          "recent",
+          "supplier",
+          "delta"
+        ],
+        "title": "AltOption"
+      },
+      "AltQuote": {
+        "properties": {
+          "price": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          },
+          "lines": {
+            "type": "integer",
+            "title": "Lines"
+          },
+          "last_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Last Date"
+          },
+          "recent": {
+            "type": "boolean",
+            "title": "Recent"
+          }
+        },
+        "type": "object",
+        "required": [
+          "price",
+          "lines",
+          "last_date",
+          "recent"
+        ],
+        "title": "AltQuote"
+      },
+      "AlternativesOut": {
+        "properties": {
+          "window_start": {
+            "type": "string",
+            "format": "date",
+            "title": "Window Start"
+          },
+          "window_end": {
+            "type": "string",
+            "format": "date",
+            "title": "Window End"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/AltGroup"
+            },
+            "type": "array",
+            "title": "Groups"
+          }
+        },
+        "type": "object",
+        "required": [
+          "window_start",
+          "window_end",
+          "groups"
+        ],
+        "title": "AlternativesOut",
+        "description": "«Где дешевле» по главным позициям вопроса: ваша история и госзакупки."
+      },
       "AnswerIn": {
         "properties": {
           "answer": {
@@ -3873,6 +4304,271 @@
         ],
         "title": "LineOut"
       },
+      "LinkBuyer": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "spend": {
+            "type": "string",
+            "title": "Spend"
+          },
+          "lines": {
+            "type": "integer",
+            "title": "Lines"
+          },
+          "suppliers": {
+            "type": "integer",
+            "title": "Suppliers"
+          },
+          "links": {
+            "type": "integer",
+            "title": "Links"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "spend",
+          "lines",
+          "suppliers",
+          "links"
+        ],
+        "title": "LinkBuyer"
+      },
+      "LinkOut": {
+        "properties": {
+          "finding_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Finding Id"
+          },
+          "supplier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier"
+          },
+          "supplier_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Id"
+          },
+          "responsible": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Responsible"
+          },
+          "status": {
+            "$ref": "#/components/schemas/FindingStatus"
+          },
+          "severity": {
+            "type": "string",
+            "title": "Severity"
+          },
+          "overpayment": {
+            "type": "string",
+            "title": "Overpayment"
+          },
+          "sku_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sku Label"
+          },
+          "pair_spend": {
+            "type": "string",
+            "title": "Pair Spend"
+          },
+          "pair_share": {
+            "type": "string",
+            "title": "Pair Share"
+          },
+          "groups": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Groups"
+          },
+          "traces": {
+            "items": {
+              "$ref": "#/components/schemas/SupplierTrace"
+            },
+            "type": "array",
+            "title": "Traces"
+          }
+        },
+        "type": "object",
+        "required": [
+          "finding_id",
+          "supplier",
+          "supplier_id",
+          "responsible",
+          "status",
+          "severity",
+          "overpayment",
+          "sku_label",
+          "pair_spend",
+          "pair_share",
+          "groups",
+          "traces"
+        ],
+        "title": "LinkOut",
+        "description": "Связка — находка LINK: пара «снабженец — поставщик» и сошедшиеся следы."
+      },
+      "LinkSupplier": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "spend": {
+            "type": "string",
+            "title": "Spend"
+          },
+          "share": {
+            "type": "string",
+            "title": "Share"
+          },
+          "inn_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inn Kind"
+          },
+          "inn_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inn Date"
+          },
+          "linked": {
+            "type": "boolean",
+            "title": "Linked"
+          },
+          "groups": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Groups"
+          },
+          "traces": {
+            "items": {
+              "$ref": "#/components/schemas/SupplierTrace"
+            },
+            "type": "array",
+            "title": "Traces"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "spend",
+          "share",
+          "inn_kind",
+          "inn_date",
+          "linked",
+          "groups",
+          "traces"
+        ],
+        "title": "LinkSupplier"
+      },
+      "LinksOverview": {
+        "properties": {
+          "suppliers_total": {
+            "type": "integer",
+            "title": "Suppliers Total"
+          },
+          "buyers": {
+            "items": {
+              "$ref": "#/components/schemas/LinkBuyer"
+            },
+            "type": "array",
+            "title": "Buyers"
+          },
+          "suppliers": {
+            "items": {
+              "$ref": "#/components/schemas/LinkSupplier"
+            },
+            "type": "array",
+            "title": "Suppliers"
+          },
+          "cells": {
+            "items": {
+              "$ref": "#/components/schemas/MatrixCell"
+            },
+            "type": "array",
+            "title": "Cells"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/LinkOut"
+            },
+            "type": "array",
+            "title": "Links"
+          }
+        },
+        "type": "object",
+        "required": [
+          "suppliers_total",
+          "buyers",
+          "suppliers",
+          "cells",
+          "links"
+        ],
+        "title": "LinksOverview",
+        "description": "Раздел «Связи»: снабженцы, поставщики, матрица оборотов и вопросы-связки."
+      },
       "LoginIn": {
         "properties": {
           "email": {
@@ -3893,6 +4589,72 @@
           "password"
         ],
         "title": "LoginIn"
+      },
+      "MatrixCell": {
+        "properties": {
+          "supplier": {
+            "type": "string",
+            "title": "Supplier"
+          },
+          "supplier_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Id"
+          },
+          "buyer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Buyer"
+          },
+          "spend": {
+            "type": "string",
+            "title": "Spend"
+          },
+          "lines": {
+            "type": "integer",
+            "title": "Lines"
+          },
+          "share": {
+            "type": "string",
+            "title": "Share"
+          },
+          "codes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Codes"
+          },
+          "linked": {
+            "type": "boolean",
+            "title": "Linked"
+          }
+        },
+        "type": "object",
+        "required": [
+          "supplier",
+          "supplier_id",
+          "buyer",
+          "spend",
+          "lines",
+          "share",
+          "codes",
+          "linked"
+        ],
+        "title": "MatrixCell"
       },
       "MeOut": {
         "properties": {
@@ -5002,6 +5764,47 @@
         ],
         "title": "RunSummary"
       },
+      "SharedRequisite": {
+        "properties": {
+          "other": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Other"
+          },
+          "other_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Other Id"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fields"
+          }
+        },
+        "type": "object",
+        "required": [
+          "other",
+          "other_id",
+          "fields"
+        ],
+        "title": "SharedRequisite"
+      },
       "StaffIn": {
         "properties": {
           "name": {
@@ -5180,6 +5983,142 @@
         "type": "object",
         "title": "SupplierCardOut"
       },
+      "SupplierDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "inn": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inn"
+          },
+          "inn_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inn Kind"
+          },
+          "inn_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inn Date"
+          },
+          "spend": {
+            "type": "string",
+            "title": "Spend"
+          },
+          "lines": {
+            "type": "integer",
+            "title": "Lines"
+          },
+          "share": {
+            "type": "string",
+            "title": "Share"
+          },
+          "first_date": {
+            "type": "string",
+            "format": "date",
+            "title": "First Date"
+          },
+          "last_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Last Date"
+          },
+          "skus": {
+            "type": "integer",
+            "title": "Skus"
+          },
+          "buyers": {
+            "items": {
+              "$ref": "#/components/schemas/SupplierBuyer"
+            },
+            "type": "array",
+            "title": "Buyers"
+          },
+          "card": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SupplierCardOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "traces": {
+            "items": {
+              "$ref": "#/components/schemas/SupplierTrace"
+            },
+            "type": "array",
+            "title": "Traces"
+          },
+          "linked": {
+            "type": "boolean",
+            "title": "Linked"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SupplierItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "shared": {
+            "items": {
+              "$ref": "#/components/schemas/SharedRequisite"
+            },
+            "type": "array",
+            "title": "Shared"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "inn",
+          "inn_kind",
+          "inn_date",
+          "spend",
+          "lines",
+          "share",
+          "first_date",
+          "last_date",
+          "skus",
+          "buyers",
+          "card",
+          "traces",
+          "linked",
+          "items",
+          "shared"
+        ],
+        "title": "SupplierDetail"
+      },
       "SupplierIn": {
         "properties": {
           "name": {
@@ -5257,6 +6196,116 @@
         ],
         "title": "SupplierIn",
         "description": "Реквизиты поставщика из карточки контрагента: по ним видно «конкурентов» с одним владельцем."
+      },
+      "SupplierItem": {
+        "properties": {
+          "sku": {
+            "type": "string",
+            "title": "Sku"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "lines": {
+            "type": "integer",
+            "title": "Lines"
+          },
+          "spend": {
+            "type": "string",
+            "title": "Spend"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          },
+          "others": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Others"
+          },
+          "others_suppliers": {
+            "type": "integer",
+            "title": "Others Suppliers"
+          },
+          "market": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Market"
+          },
+          "market_points": {
+            "type": "integer",
+            "title": "Market Points"
+          },
+          "vs_others": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vs Others"
+          },
+          "vs_market": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vs Market"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sku",
+          "label",
+          "unit",
+          "lines",
+          "spend",
+          "price",
+          "others",
+          "others_suppliers",
+          "market",
+          "market_points",
+          "vs_others",
+          "vs_market"
+        ],
+        "title": "SupplierItem"
       },
       "SupplierOut": {
         "properties": {
