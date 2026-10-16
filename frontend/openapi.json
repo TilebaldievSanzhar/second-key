@@ -242,6 +242,67 @@
         }
       }
     },
+    "/api/org/network": {
+      "patch": {
+        "tags": [
+          "org"
+        ],
+        "summary": "Patch Network",
+        "description": "Обезличенный обмен ценами с другими клиентами: даёте свои — видите сеть (не меньше трёх компаний).",
+        "operationId": "patch_network_api_org_network_patch",
+        "parameters": [
+          {
+            "name": "x-org-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NetworkIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/org/members": {
       "get": {
         "tags": [
@@ -1008,6 +1069,152 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SupplierDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/audits/{run_id}/suppliers/{supplier_id}/registry": {
+      "put": {
+        "tags": [
+          "audits"
+        ],
+        "summary": "Save Registry",
+        "description": "Ручная проверка по выписке: сохраняется для организации по ИНН, связки проверки пересчитываются сразу —\nответы снабжения и решения по уже заданным вопросам остаются.",
+        "operationId": "save_registry_api_audits__run_id__suppliers__supplier_id__registry_put",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "supplier_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Supplier Id"
+            }
+          },
+          {
+            "name": "x-org-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistryIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/audits/{run_id}/registry/fetch": {
+      "post": {
+        "tags": [
+          "audits"
+        ],
+        "summary": "Fetch Registry",
+        "description": "Запросить сведения у агрегатора (Statsnet по ключу): сначала поставщики со следами, затем крупные.",
+        "operationId": "fetch_registry_api_audits__run_id__registry_fetch_post",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "x-org-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Fetch Registry Api Audits  Run Id  Registry Fetch Post"
                 }
               }
             }
@@ -2621,18 +2828,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": {
-                    "anyOf": [
-                      {
-                        "type": "boolean"
-                      },
-                      {
-                        "type": "string"
-                      }
-                    ]
-                  },
-                  "title": "Response Capabilities Api Integrations Capabilities Get"
+                  "$ref": "#/components/schemas/CapabilitiesOut"
                 }
               }
             }
@@ -3090,6 +3286,35 @@
           "lines"
         ],
         "title": "BreakdownRow"
+      },
+      "CapabilitiesOut": {
+        "properties": {
+          "secrets": {
+            "type": "boolean",
+            "title": "Secrets"
+          },
+          "llm": {
+            "type": "boolean",
+            "title": "Llm"
+          },
+          "public_url": {
+            "type": "string",
+            "title": "Public Url"
+          },
+          "registry": {
+            "type": "string",
+            "title": "Registry"
+          }
+        },
+        "type": "object",
+        "required": [
+          "secrets",
+          "llm",
+          "public_url",
+          "registry"
+        ],
+        "title": "CapabilitiesOut",
+        "description": "Что настроено на сервере."
       },
       "ConnectionIn": {
         "properties": {
@@ -4781,6 +5006,19 @@
         ],
         "title": "MembershipOut"
       },
+      "NetworkIn": {
+        "properties": {
+          "opt_in": {
+            "type": "boolean",
+            "title": "Opt In"
+          }
+        },
+        "type": "object",
+        "required": [
+          "opt_in"
+        ],
+        "title": "NetworkIn"
+      },
       "OrgOut": {
         "properties": {
           "id": {
@@ -4798,6 +5036,11 @@
           },
           "settings": {
             "$ref": "#/components/schemas/OrgSettings"
+          },
+          "network_opt_in": {
+            "type": "boolean",
+            "title": "Network Opt In",
+            "default": false
           }
         },
         "type": "object",
@@ -5012,6 +5255,194 @@
           "total"
         ],
         "title": "Page[RunOut]"
+      },
+      "PaymentIn": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "title": "Date"
+          },
+          "supplier": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Supplier",
+            "description": "Как в строках закупок"
+          },
+          "supplier_inn": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Inn"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Amount",
+            "description": "Сумма с НДС"
+          },
+          "doc": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doc",
+            "description": "Номер и дата документа"
+          },
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose",
+            "description": "Назначение платежа"
+          }
+        },
+        "type": "object",
+        "required": [
+          "date",
+          "supplier",
+          "amount"
+        ],
+        "title": "PaymentIn",
+        "description": "Оплата поставщику: списание с расчётного счёта или расходный кассовый ордер с видом «оплата поставщику»."
+      },
+      "PaymentOut": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "title": "Date"
+          },
+          "amount": {
+            "type": "string",
+            "title": "Amount"
+          },
+          "doc_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doc No"
+          },
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          }
+        },
+        "type": "object",
+        "required": [
+          "date",
+          "amount",
+          "doc_no",
+          "purpose"
+        ],
+        "title": "PaymentOut"
+      },
+      "PaymentProfileOut": {
+        "properties": {
+          "paid": {
+            "type": "string",
+            "title": "Paid"
+          },
+          "delivered": {
+            "type": "string",
+            "title": "Delivered"
+          },
+          "payments": {
+            "type": "integer",
+            "title": "Payments"
+          },
+          "prepay_share": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prepay Share"
+          },
+          "delay_days": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delay Days"
+          },
+          "advance": {
+            "type": "string",
+            "title": "Advance"
+          },
+          "advance_since": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Advance Since"
+          },
+          "unpaid": {
+            "type": "string",
+            "title": "Unpaid"
+          }
+        },
+        "type": "object",
+        "required": [
+          "paid",
+          "delivered",
+          "payments",
+          "prepay_share",
+          "delay_days",
+          "advance",
+          "advance_since",
+          "unpaid"
+        ],
+        "title": "PaymentProfileOut"
       },
       "PersonRef": {
         "properties": {
@@ -5491,6 +5922,15 @@
             "maxItems": 20000,
             "title": "Staff",
             "default": []
+          },
+          "payments": {
+            "items": {
+              "$ref": "#/components/schemas/PaymentIn"
+            },
+            "type": "array",
+            "maxItems": 200000,
+            "title": "Payments",
+            "default": []
           }
         },
         "type": "object",
@@ -5498,6 +5938,243 @@
           "lines"
         ],
         "title": "PurchasesIn"
+      },
+      "RegistryIn": {
+        "properties": {
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status",
+            "description": "Как в выписке: «Действующее», «Ликвидировано»"
+          },
+          "active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active"
+          },
+          "registered": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Registered"
+          },
+          "director": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Director"
+          },
+          "founders": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 30,
+            "title": "Founders",
+            "default": []
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "unreliable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unreliable",
+            "description": "В реестре недобросовестных поставщиков госзакупок"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url",
+            "description": "Ссылка на выписку или источник"
+          }
+        },
+        "type": "object",
+        "title": "RegistryIn",
+        "description": "Ручная проверка по выписке Минюста (record.minjust.gov.kg) или другому источнику."
+      },
+      "RegistryOut": {
+        "properties": {
+          "inn": {
+            "type": "string",
+            "title": "Inn"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active"
+          },
+          "registered": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Registered"
+          },
+          "director": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Director"
+          },
+          "founders": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Founders",
+            "default": []
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "unreliable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unreliable"
+          },
+          "risks": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Risks",
+            "default": []
+          },
+          "checked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked At"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "inn",
+          "source"
+        ],
+        "title": "RegistryOut",
+        "description": "Сведения реестра о поставщике: ручная проверка по выписке или агрегатор."
       },
       "Role": {
         "type": "string",
@@ -6095,6 +6772,34 @@
             },
             "type": "array",
             "title": "Shared"
+          },
+          "registry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RegistryOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "payment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaymentProfileOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "payments_list": {
+            "items": {
+              "$ref": "#/components/schemas/PaymentOut"
+            },
+            "type": "array",
+            "title": "Payments List",
+            "default": []
           }
         },
         "type": "object",

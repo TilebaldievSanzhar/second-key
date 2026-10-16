@@ -69,6 +69,20 @@ class OrgOut(BaseModel):
     name: str
     currency: str
     settings: OrgSettings
+    network_opt_in: bool = False  # обезличенный обмен ценами с другими клиентами (services/network.py)
+
+
+class NetworkIn(BaseModel):
+    opt_in: bool
+
+
+class CapabilitiesOut(BaseModel):
+    """Что настроено на сервере."""
+
+    secrets: bool  # SK_DATA_KEY: можно хранить пароли подключений 1С
+    llm: bool  # SK_LLM_API_KEY: ИИ-подсказки
+    public_url: str
+    registry: str  # агрегатор реестров («statsnet») или пусто — только ручная проверка
 
 
 class MemberOut(BaseModel):
@@ -348,9 +362,63 @@ class SharedRequisite(BaseModel):
     fields: list[str]
 
 
+class RegistryOut(BaseModel):
+    """Сведения реестра о поставщике: ручная проверка по выписке или агрегатор."""
+
+    inn: str
+    source: str  # manual | statsnet
+    name: str | None = None
+    status: str | None = None
+    active: bool | None = None
+    registered: date | None = None
+    director: str | None = None
+    founders: list[str] = []
+    address: str | None = None
+    unreliable: bool | None = None
+    risks: list[str] = []
+    checked_at: date | None = None
+    url: str | None = None
+
+
+class RegistryIn(BaseModel):
+    """Ручная проверка по выписке Минюста (record.minjust.gov.kg) или другому источнику."""
+
+    status: str | None = Field(
+        default=None, max_length=120, description="Как в выписке: «Действующее», «Ликвидировано»"
+    )
+    active: bool | None = None
+    registered: date | None = None
+    director: str | None = Field(default=None, max_length=200)
+    founders: list[str] = Field(default=[], max_length=30)
+    address: str | None = Field(default=None, max_length=500)
+    unreliable: bool | None = Field(default=None, description="В реестре недобросовестных поставщиков госзакупок")
+    url: str | None = Field(default=None, max_length=500, description="Ссылка на выписку или источник")
+
+
+class PaymentProfileOut(BaseModel):
+    paid: Decimal
+    delivered: Decimal
+    payments: int
+    prepay_share: Decimal | None
+    delay_days: Decimal | None
+    advance: Decimal
+    advance_since: date | None
+    unpaid: Decimal
+
+
+class PaymentOut(Out):
+    date: date
+    amount: Decimal
+    doc_no: str | None
+    purpose: str | None
+
+
 class SupplierDetail(SupplierOut):
     items: list[SupplierItem]
     shared: list[SharedRequisite]
+    registry: RegistryOut | None = None  # сведения сейчас: своя ручная проверка или свежий агрегатор
+    payment: PaymentProfileOut | None = None
+    payments_list: list[PaymentOut] = []
 
 
 class AltQuote(BaseModel):

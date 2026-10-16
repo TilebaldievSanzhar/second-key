@@ -7,6 +7,7 @@ import { KeyStatus } from "./KeyPair";
 
 function Amount({ f }: { f: Finding }) {
   if (f.code === "LINK") return <span className="row-amt row-amt-signal">связка</span>;
+  if (f.code === "P-09") return <span className="row-amt row-amt-signal">аванс</span>;
   if (isSignal(f)) return <span className="row-amt row-amt-signal">сигнал</span>;
   const tone = f.status === "confirmed" ? "confirmed" : f.status === "open" || f.status === "answered" ? "over" : "muted";
   return <span className={`row-amt row-amt-${tone}`}>{int(f.overpayment)}&nbsp;сом</span>;

@@ -86,6 +86,7 @@ async def sync_connection(
         async with odata_client(config, secret, transport) as c:
             records = await c.purchases(start, end)
             cards = c.supplier_cards
+            pays = await c.payments(start, end)
         if not records:
             raise ODataError(f"За {start:%d.%m.%Y}–{end:%d.%m.%Y} в 1С нет проведённых документов поступления")
         payload = PurchasesIn(
@@ -94,6 +95,7 @@ async def sync_connection(
             period_end=end,
             lines=records,
             suppliers=cards,
+            payments=pays,
         )
     except (ODataError, crypto.SecretsUnavailable, ValueError) as exc:
         await _mark(connection_id, "error", str(exc)[:1000])

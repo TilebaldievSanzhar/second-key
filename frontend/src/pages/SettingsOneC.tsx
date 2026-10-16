@@ -5,6 +5,7 @@ import { api, unwrap, type Schemas } from "../api/client";
 import { Notice, ErrorNote, Skeleton } from "../components/State";
 import { useToast } from "../components/Toast";
 import { dayTime } from "../format";
+import { useCapabilities } from "../session";
 
 type Conn = Schemas["ConnectionOut"];
 const API = `${window.location.origin}/api`;
@@ -159,9 +160,6 @@ function ModuleInfo() {
 
 const EMPTY = { name: "1С: Бухгалтерия", base_url: "", username: "", password: "", profile: "bp30" as "bp30" | "ut11", period_days: 90, schedule: "manual" as "manual" | "daily" };
 
-export function useCapabilities() {
-  return useQuery({ queryKey: ["capabilities"], queryFn: () => unwrap(api.GET("/api/integrations/capabilities")) });
-}
 
 function Connections() {
   const caps = useCapabilities();

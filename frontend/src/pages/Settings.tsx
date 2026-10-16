@@ -31,8 +31,45 @@ export function SettingsPage() {
       </header>
       {org.isPending ? <Skeleton lines={5} /> : org.isError ? <ErrorNote error={org.error} /> : <Thresholds org={org.data} />}
       <People />
+      {org.data && <Network org={org.data} />}
       {canUpload(role) && <OneCSection />}
       {canUpload(role) && <AISection />}
+    </section>
+  );
+}
+
+// Обезличенное сравнение с другими клиентами: даёте свои цены — видите, почём поставщик продаёт другим
+function Network({ org }: { org: Org }) {
+  const editable = canDecide(useRole());
+  const qc = useQueryClient();
+  const toast = useToast();
+  const save = useMutation({
+    mutationFn: (opt_in: boolean) => unwrap(api.PATCH("/api/org/network", { body: { opt_in } })),
+    onSuccess: (data) => {
+      qc.setQueryData(["org"], data);
+      toast({ text: data.network_opt_in ? "Сравнение с другими клиентами включено" : "Сравнение выключено" });
+    },
+    onError: (e) => toast({ kind: "error", text: e.message }),
+  });
+  return (
+    <section className="block">
+      <h2 className="block-title">Сравнение с другими клиентами</h2>
+      <div className="panel">
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={org.network_opt_in ?? false}
+            disabled={!editable || save.isPending}
+            onChange={(e) => save.mutate(e.target.checked)}
+          />
+          Участвовать в обезличенном сравнении цен поставщиков
+        </label>
+        <p className="muted small">
+          Ваши цены попадают в сравнение без названия компании — и только когда по позиции у поставщика есть данные не
+          меньше трёх компаний. Взамен вы видите, почём тот же поставщик продаёт ту же позицию другим: среднее, округлённое
+          до 10 сом, только прошлые покупки. Отключить можно в любой момент — тогда и сравнение вам не показывается.
+        </p>
+      </div>
     </section>
   );
 }

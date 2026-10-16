@@ -7,9 +7,12 @@
              L-05 поставщик появился вместе с новым снабженцем
              L-06 вытеснение: новый поставщик забрал позицию и он дороже прежних
   личность   L-09 вы — почти единственный клиент: входящие номера его документов идут подряд
-             L-10 юрлицо моложе года или ИП-«номинал» — по номеру ИНН
-             L-11 общие телефон, счёт, e-mail с другим поставщиком
+             L-10 юрлицо моложе года или ИП-«номинал» — по реестру или по номеру ИНН
+             L-11 общие телефон, счёт, e-mail, руководитель или учредитель с другим поставщиком
              L-12 ИНН поставщика совпадает с ИНН сотрудника
+             L-13 по реестру недействующий, банкрот или недобросовестный поставщик — налоговый риск
+  цена       L-03 тот же поставщик продаёт ту же позицию другим клиентам дешевле (обезличенно, ≥ 3 компаний)
+  поведение  L-07 оплаты: аванс без поставки, всё по предоплате, оплата вне очереди (engine/payments.py)
 
 Связка становится вопросом (находка LINK), когда у пары сошлись следы из двух и более групп или
 поставщик совпал с сотрудником. Один след почти всегда объясним; совпадение независимых — повод спросить.
@@ -32,6 +35,8 @@ from itertools import pairwise
 
 from secondkey.engine.inn import parse_inn
 from secondkey.engine.models import AuditFinding, NormLine, StaffRef, SupplierCard, SupplierProfile, Trace
+from secondkey.engine.payments import PaymentProfile, payment_traces
+from secondkey.engine.registry import RegistryRecord, person_key
 from secondkey.engine.rules import AuditConfig, _fmt, _groups, _in_window, _median, _money, _pct, _q
 
 
@@ -427,8 +432,11 @@ def l09_sequential_numbers(data: _Data, cfg: AuditConfig) -> list[Trace]:
     return out
 
 
-def l10_inn_age(data: _Data, cfg: AuditConfig) -> list[Trace]:
-    """Юрлицо зарегистрировано меньше чем за год до первой поставки; ИП моложе 23 или старше 70 лет."""
+def l10_inn_age(data: _Data, cfg: AuditConfig, registry: dict[str, RegistryRecord] | None = None) -> list[Trace]:
+    """Юрлицо зарегистрировано меньше чем за год до первой поставки; ИП моложе 23 или старше 70 лет.
+
+    Дата регистрации юрлица — по реестру, если он есть, иначе по номеру ИНН.
+    """
     out = []
     for supplier, lines in data.by_supplier.items():
         info = parse_inn(data.inn.get(supplier))
@@ -437,11 +445,14 @@ def l10_inn_age(data: _Data, cfg: AuditConfig) -> list[Trace]:
         share = data.spend[supplier] / data.total
         if share < cfg.link_min_spend_share:
             continue
+        rec = (registry or {}).get(info.inn)
+        by_registry = info.kind == "org" and rec is not None and rec.registered is not None
+        born = rec.registered if by_registry else info.date
         first = lines[0].line.date
-        age = (first - info.date).days
+        age = (first - born).days
         if info.kind == "org" and 0 <= age <= cfg.link_young_org_days:
             text = (
-                f"{_q(supplier)} зарегистрирован {_d(info.date)} (по номеру ИНН) — "
+                f"{_q(supplier)} зарегистрирован {_d(born)} ({'по реестру' if by_registry else 'по номеру ИНН'}) — "
                 f"за {_months(age)} до первой поставки; "
                 f"с тех пор {_pct(share)} ваших закупок, {_fmt(data.spend[supplier])} сом"
             )
@@ -463,7 +474,12 @@ def l10_inn_age(data: _Data, cfg: AuditConfig) -> list[Trace]:
                 text=text,
                 supplier=supplier,
                 line_ids=[lines[0].line_id],
-                facts={"inn_kind": info.kind, "inn_date": info.date.isoformat(), "days_before_first": age},
+                facts={
+                    "inn_kind": info.kind,
+                    "inn_date": born.isoformat(),
+                    "days_before_first": age,
+                    "by_registry": by_registry,
+                },
             )
         )
     return out
@@ -489,8 +505,11 @@ def _norm_address(v: str | None) -> str | None:
     return v if len(v) >= 10 else None
 
 
-def l11_shared_requisites(data: _Data, cards: dict[str, SupplierCard]) -> list[Trace]:
-    """У «разных» поставщиков совпадают телефон, расчётный счёт или e-mail; адрес — только вместе с другим."""
+def l11_shared_requisites(
+    data: _Data, cards: dict[str, SupplierCard], registry: dict[str, RegistryRecord] | None = None
+) -> list[Trace]:
+    """У «разных» поставщиков совпадают телефон, расчётный счёт, e-mail, руководитель или учредитель;
+    адрес — только вместе с другим."""
     fields = (
         ("phone", _norm_phone, "телефон"),
         ("bank_account", _norm_account, "расчётный счёт"),
@@ -505,6 +524,16 @@ def l11_shared_requisites(data: _Data, cards: dict[str, SupplierCard]) -> list[T
             v = norm(getattr(card, attr))
             if v:
                 index[(attr, v)].add(name)
+    people: dict[str, str] = {}  # ключ человека → как записан в реестре
+    for name in data.by_supplier:
+        rec = (registry or {}).get(data.inn.get(name) or "")
+        if rec is None:
+            continue
+        for who in [rec.director, *rec.founders]:
+            k = person_key(who)
+            if k:
+                index[("person", k)].add(name)
+                people.setdefault(k, who or "")
     pairs: dict[tuple[str, str], list[str]] = defaultdict(list)
     for (attr, _), names in index.items():
         if len(names) < 2:
@@ -515,12 +544,21 @@ def l11_shared_requisites(data: _Data, cards: dict[str, SupplierCard]) -> list[T
                 if data.inn.get(a) and data.inn.get(a) == data.inn.get(b):
                     continue  # один и тот же контрагент заведён дважды — это не «конкуренты»
                 pairs[(a, b)].append(attr)
-    label = {attr: title for attr, _, title in fields}
+    label = {attr: title for attr, _, title in fields} | {"person": "руководитель или учредитель"}
+    shared_people: dict[tuple[str, str], list[str]] = defaultdict(list)
+    for (attr, v), names in index.items():
+        if attr == "person" and len(names) >= 2:
+            ns = sorted(names)
+            for i, a in enumerate(ns):
+                for b in ns[i + 1 :]:
+                    shared_people[(a, b)].append(people[v])
     out = []
     for (a, b), attrs in pairs.items():
         if attrs == ["address"]:
             continue  # один бизнес-центр — ещё не связь
-        what = ", ".join(label[x] for x in attrs)
+        what = ", ".join(label[x] for x in dict.fromkeys(attrs))
+        if (a, b) in shared_people:
+            what += f" ({', '.join(shared_people[(a, b)])})"
         for me, other in ((a, b), (b, a)):
             out.append(
                 Trace(
@@ -532,7 +570,7 @@ def l11_shared_requisites(data: _Data, cards: dict[str, SupplierCard]) -> list[T
                     ),
                     supplier=me,
                     line_ids=[data.by_supplier[me][0].line_id],
-                    facts={"other": other, "fields": attrs},
+                    facts={"other": other, "fields": list(dict.fromkeys(attrs))},
                 )
             )
     return out
@@ -566,6 +604,87 @@ def l12_staff(data: _Data, staff: list[StaffRef], hash_inn: Callable[[str], str]
     return out
 
 
+def l13_registry(data: _Data, registry: dict[str, RegistryRecord] | None) -> list[Trace]:
+    """По реестру поставщик недействующий, банкрот или в реестре недобросовестных поставщиков — налоговый риск:
+    расходы и НДС по его документам налоговая может не принять."""
+    out = []
+    for supplier, lines in data.by_supplier.items():
+        rec = (registry or {}).get(data.inn.get(supplier) or "")
+        if rec is None:
+            continue
+        reasons = []
+        if rec.inactive:
+            reasons.append(f"по реестру — {rec.status or 'недействующий'}")
+        if rec.unreliable:
+            reasons.append("в реестре недобросовестных поставщиков госзакупок")
+        reasons += [f"агрегатор: {r}" for r in rec.risks[:3]]
+        if not reasons:
+            continue
+        spend = data.spend[supplier]
+        vat = _money(spend * Decimal("12") / Decimal("112"))
+        src = "ручная проверка" if rec.source == "manual" else rec.source
+        out.append(
+            Trace(
+                code="L-13",
+                group="identity",
+                text=(
+                    f"{_q(supplier)}: {'; '.join(reasons)} ({src}"
+                    f"{f', проверено {rec.checked_at:%d.%m.%Y}' if rec.checked_at else ''}). Закупки — "
+                    f"{_fmt(spend)} сом по {lines[-1].line.date:%d.%m.%Y}; НДС к зачёту под риском — до {_fmt(vat)} сом"
+                ),
+                supplier=supplier,
+                money=vat,
+                line_ids=[lines[-1].line_id],
+                facts={"reasons": reasons, "vat_at_risk": str(vat), "source": rec.source},
+            )
+        )
+    return out
+
+
+def l03_network(data: _Data, network: dict[tuple[str, str], dict] | None, cfg: AuditConfig) -> list[Trace]:
+    """Тот же поставщик (по ИНН) продаёт ту же позицию другим клиентам дешевле — по обезличенной сети.
+
+    network[(ИНН, позиция)] = {"price": средняя из медиан по компаниям, "orgs": сколько компаний, "points": строк};
+    сервис отдаёт только сочетания, где компаний ≥ 3 и строк ≥ 10, — ни одну компанию по цене не узнать.
+    """
+    if not network:
+        return []
+    out = []
+    for supplier, lines in data.by_supplier.items():
+        inn = data.inn.get(supplier)
+        if not inn:
+            continue
+        by_sku: dict[str, list[NormLine]] = defaultdict(list)
+        for n in lines:
+            if n.sku and n.price is not None and n.status == "ok":
+                by_sku[n.sku].append(n)
+        for sku, rows in by_sku.items():
+            net = network.get((inn, sku))
+            if not net or len(rows) < cfg.link_min_lines:
+                continue
+            ours = _median([n.price for n in rows])
+            ref = Decimal(str(net["price"]))
+            if ref <= 0 or ours <= ref * (1 + cfg.parallel_tolerance):
+                continue
+            money = _money(sum(((n.price - ref) * n.qty for n in rows if n.qty), D0))
+            out.append(
+                Trace(
+                    code="L-03",
+                    group="price",
+                    text=(
+                        f"{rows[0].sku_label}: {_q(supplier)} продаёт ту же позицию другим клиентам «Второго ключа» "
+                        f"в среднем по {_fmt(ref)} сом — у вас {_fmt(ours)}, на {_pct(ours / ref - 1)} дороже "
+                        f"(обезличенно: {net['orgs']} компаний, {net['points']} покупок)"
+                    ),
+                    supplier=supplier,
+                    money=money,
+                    line_ids=[n.line_id for n in rows],
+                    facts={"sku": rows[0].sku_label, "premium": str(_dec(ours / ref - 1)), "orgs": net["orgs"]},
+                )
+            )
+    return out
+
+
 # --------------------------------------------------------------------------- триангуляция
 
 
@@ -576,10 +695,15 @@ def run_links(
     cards: dict[str, SupplierCard] | None = None,
     staff: list[StaffRef] | None = None,
     hash_inn: Callable[[str], str] | None = None,
+    payments: dict[str, PaymentProfile] | None = None,
+    registry: dict[str, RegistryRecord] | None = None,
+    network: dict[tuple[str, str], dict] | None = None,
 ) -> tuple[list[AuditFinding], list[SupplierProfile]]:
     """Следы по всем поставщикам → досье поставщиков и находки LINK для пар, где следы сошлись."""
     cfg = cfg or AuditConfig()
     cards = cards or {}
+    payments = payments or {}
+    registry = registry or {}
     data = _Data(lines)
     if not lines:
         return [], []
@@ -590,9 +714,12 @@ def run_links(
         + l05_came_with_buyer(data, cfg)
         + l06_displacement(data, cfg)
         + l09_sequential_numbers(data, cfg)
-        + l10_inn_age(data, cfg)
-        + l11_shared_requisites(data, cards)
+        + l10_inn_age(data, cfg, registry)
+        + l11_shared_requisites(data, cards, registry)
         + l12_staff(data, staff or [], hash_inn)
+        + l13_registry(data, registry)
+        + l03_network(data, network, cfg)
+        + (payment_traces(payments, cfg, data.end) if data.end else [])
     )
     by_supplier: dict[str, list[Trace]] = defaultdict(list)
     for t in traces:
@@ -603,7 +730,11 @@ def run_links(
     for supplier in data.by_supplier:
         a, share = data.main_buyer(supplier)
         mine = by_supplier.get(supplier, [])
-        profiles.append(_profile(data, supplier, cards.get(supplier), mine))
+        prof = _profile(data, supplier, cards.get(supplier), mine)
+        prof.payment = payments[supplier].as_dict() if supplier in payments else None
+        rec = registry.get(data.inn.get(supplier) or "")
+        prof.registry = rec.as_dict() if rec else None
+        profiles.append(prof)
         pair = a if share >= Decimal("0.5") else None
         # следы пары — этого снабженца; следы поставщика (личность) — к основной паре
         relevant = [t for t in mine if t.responsible in (None, pair)]

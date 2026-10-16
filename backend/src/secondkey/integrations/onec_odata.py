@@ -36,6 +36,8 @@ class Profile:
     line_fields: dict[str, str] = field(default_factory=dict)  # наше поле → поле строки ТЧ
     catalogs: dict[str, str] = field(default_factory=dict)  # наше поле → справочник для расшифровки ключа
     optional_doc_fields: dict[str, str] = field(default_factory=dict)  # поля документа, без которых можно жить
+    # оплаты поставщикам: (документ, поле вида операции, значение, поле суммы, поле назначения)
+    payment_documents: tuple[tuple[str, str, str, str, str], ...] = ()
 
 
 PROFILES: dict[str, Profile] = {
@@ -65,6 +67,16 @@ PROFILES: dict[str, Profile] = {
             "bank_account": "Catalog_БанковскиеСчета",
         },
         optional_doc_fields={"doc_in_no": "НомерВходящегоДокумента", "doc_in_date": "ДатаВходящегоДокумента"},
+        payment_documents=(
+            (
+                "Document_СписаниеСРасчетногоСчета",
+                "ВидОперации",
+                "ОплатаПоставщику",
+                "СуммаДокумента",
+                "НазначениеПлатежа",
+            ),
+            ("Document_РасходныйКассовыйОрдер", "ВидОперации", "ОплатаПоставщику", "СуммаДокумента", "Основание"),
+        ),
     ),
     "ut11": Profile(
         key="ut11",
@@ -92,6 +104,22 @@ PROFILES: dict[str, Profile] = {
             "bank_account": "Catalog_БанковскиеСчета",
         },
         optional_doc_fields={"doc_in_no": "НомерВходящегоДокумента", "doc_in_date": "ДатаВходящегоДокумента"},
+        payment_documents=(
+            (
+                "Document_СписаниеБезналичныхДенежныхСредств",
+                "ХозяйственнаяОперация",
+                "ОплатаПоставщику",
+                "СуммаДокумента",
+                "НазначениеПлатежа",
+            ),
+            (
+                "Document_РасходныйКассовыйОрдер",
+                "ХозяйственнаяОперация",
+                "ОплатаПоставщику",
+                "СуммаДокумента",
+                "Основание",
+            ),
+        ),
     ),
 }
 
@@ -263,6 +291,53 @@ class OneCOData:
         log.info("onec.odata_pulled", profile=p.key, documents=len(docs), lines=len(lines))
         return lines
 
+    async def payments(self, start: date, end: date) -> list[dict[str, Any]]:
+        """Оплаты поставщикам в формате контракта PaymentIn; документа нет в публикации — пропускаем его."""
+        p = self.profile
+        out: list[dict[str, Any]] = []
+        for doc, op_field, op_value, amount_field, purpose_field in p.payment_documents:
+            flt = (
+                f"Date ge {_dt(start)} and Date le {_dt(end, True)} and Posted eq true and DeletionMark eq false "
+                f"and {op_field} eq '{op_value}'"
+            )
+            sel = ",".join(["Ref_Key", "Date", "Number", "Контрагент_Key", amount_field, purpose_field])
+            rows: list[dict[str, Any]] = []
+            skip = 0
+            try:
+                while True:
+                    q = (
+                        f"{doc}?$format=json&$filter={quote(flt)}&$select={quote(sel)}"
+                        f"&$orderby=Date&$top={self.page}&$skip={skip}"
+                    )
+                    page = (await self._get(q)).get("value", [])
+                    rows.extend(page)
+                    if len(page) < self.page:
+                        break
+                    skip += self.page
+            except ODataError as exc:
+                log.info("onec.odata_payments_skipped", document=doc, error=str(exc)[:200])
+                continue
+            names = await self._names(p.catalogs["supplier"], {r.get("Контрагент_Key") or "" for r in rows}, "ИНН")
+            title = "Кассовый ордер" if "Кассов" in doc else "Списание с расчётного счёта"
+            for r in rows:
+                sup = names.get(r.get("Контрагент_Key") or "", {})
+                amount = Decimal(str(r.get(amount_field) or 0))
+                if not sup or amount <= 0:
+                    continue
+                when = datetime.fromisoformat(r["Date"]).date()
+                out.append(
+                    {
+                        "date": when.isoformat(),
+                        "supplier": sup.get("Description") or "Поставщик не указан",
+                        "supplier_inn": sup.get("ИНН") or None,
+                        "amount": str(amount),
+                        "doc": f"{title} {str(r.get('Number') or '').strip()} от {when:%d.%m.%Y}",
+                        "purpose": (str(r.get(purpose_field) or "").strip() or None),
+                    }
+                )
+        log.info("onec.odata_payments", profile=p.key, payments=len(out))
+        return out
+
     async def _suppliers(self, cat: dict[str, str], keys: set[str]) -> dict[str, dict[str, Any]]:
         """Контрагенты с ИНН и, если опубликованы, контактной информацией и основным счётом → supplier_cards."""
         try:
@@ -310,4 +385,5 @@ def profile_from_config(config: dict[str, Any]) -> Profile:
         line_fields={**base.line_fields, **over.get("line_fields", {})},
         catalogs={**base.catalogs, **over.get("catalogs", {})},
         optional_doc_fields={**base.optional_doc_fields, **over.get("optional_doc_fields", {})},
+        payment_documents=base.payment_documents,
     )

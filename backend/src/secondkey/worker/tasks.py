@@ -48,6 +48,14 @@ async def review_answer_task(finding_id: str) -> None:
     await ai.review_answer(uuid.UUID(finding_id))
 
 
+@broker.task(task_name="registry.fetch_run", timeout=30 * 60)
+async def registry_fetch_task(run_id: str) -> dict:
+    """Сведения агрегатора по поставщикам прогона и пересчёт связок."""
+    from secondkey.services.registry import fetch_for_run
+
+    return await fetch_for_run(uuid.UUID(run_id))
+
+
 @broker.task(task_name="integrations.sync", timeout=30 * 60)
 async def sync_connection_task(connection_id: str, start: str | None = None, end: str | None = None) -> str | None:
     from datetime import date

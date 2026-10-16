@@ -24,8 +24,12 @@ from secondkey.api.schemas import (
     LineOut,
     LinksOverview,
     Page,
+    PaymentOut,
+    PaymentProfileOut,
     PriceHistory,
     PricePoint,
+    RegistryIn,
+    RegistryOut,
     RunIn,
     RunOut,
     RunSummary,
@@ -41,6 +45,7 @@ from secondkey.db.models import (
     FindingStatus,
     MarketPoint,
     Organization,
+    Payment,
     PurchaseLine,
     RunStatus,
     RunSupplier,
@@ -48,7 +53,7 @@ from secondkey.db.models import (
 )
 from secondkey.db.session import sessionmaker
 from secondkey.engine.report import RULE_TITLES
-from secondkey.services import links_view, progress
+from secondkey.services import links_view, progress, registry
 from secondkey.services.audits import basic_report_key, create_run, remember_mapping
 from secondkey.services.storage import get_storage
 from secondkey.worker.tasks import run_audit_task
@@ -261,8 +266,68 @@ async def supplier(
     s = await session.get(RunSupplier, supplier_id)
     if s is None or s.run_id != run.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Поставщик не найден в этой проверке")
+    return await _supplier_detail(session, run, s)
+
+
+async def _supplier_detail(session: AsyncSession, run: AuditRun, s: RunSupplier) -> SupplierDetail:
     extra = await links_view.supplier_detail(session, run, s)
-    return SupplierDetail(**SupplierOut.model_validate(s).model_dump(), **extra)
+    rec = (await registry.records_for(session, run.org_id, {s.inn})).get(s.inn) if s.inn else None
+    pays = (
+        await session.scalars(
+            select(Payment)
+            .where(Payment.run_id == run.id, Payment.supplier == s.name)
+            .order_by(Payment.date.desc())
+            .limit(30)
+        )
+    ).all()
+    return SupplierDetail(
+        **SupplierOut.model_validate(s).model_dump(),
+        **extra,
+        registry=RegistryOut(**rec.as_dict()) if rec else None,
+        payment=PaymentProfileOut(**s.payment) if s.payment else None,
+        payments_list=[PaymentOut.model_validate(p) for p in pays],
+    )
+
+
+@router.put("/{run_id}/suppliers/{supplier_id}/registry", response_model=SupplierDetail)
+async def save_registry(
+    run_id: uuid.UUID, supplier_id: uuid.UUID, body: RegistryIn, session: Session, member: Member = require(*MANAGE)
+) -> SupplierDetail:
+    """Ручная проверка по выписке: сохраняется для организации по ИНН, связки проверки пересчитываются сразу —
+    ответы снабжения и решения по уже заданным вопросам остаются."""
+    from secondkey.services.links_refresh import refresh_links
+
+    run = await _run(session, run_id, member)
+    s = await session.get(RunSupplier, supplier_id)
+    if s is None or s.run_id != run.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Поставщик не найден в этой проверке")
+    if not s.inn:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "У поставщика нет ИНН в выгрузке — сверять не с чем")
+    org_id, inn, name = run.org_id, s.inn, s.name
+    await registry.save_manual(session, org_id, member.user.id, inn, {**body.model_dump(), "name": name})
+    await session.commit()
+    await refresh_links(run_id)  # своя сессия: следы и вопросы-связки пересчитаны
+    session.expire_all()
+    run = await session.get(AuditRun, run_id)
+    s = await session.get(RunSupplier, supplier_id)
+    return await _supplier_detail(session, run, s)
+
+
+@router.post("/{run_id}/registry/fetch", status_code=status.HTTP_202_ACCEPTED)
+async def fetch_registry(run_id: uuid.UUID, session: Session, member: Member = require(*MANAGE)) -> dict[str, str]:
+    """Запросить сведения у агрегатора (Statsnet по ключу): сначала поставщики со следами, затем крупные."""
+    from secondkey.registries import provider_configured
+    from secondkey.worker.tasks import registry_fetch_task
+
+    run = await _run(session, run_id, member)
+    if not provider_configured():
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Агрегатор реестров не подключён: нужен ключ SK_STATSNET_API_KEY. "
+            "Пока — ручная проверка в карточке поставщика",
+        )
+    await registry_fetch_task.kiq(str(run.id))
+    return {"status": "queued"}
 
 
 @router.get("/{run_id}/links", response_model=LinksOverview)

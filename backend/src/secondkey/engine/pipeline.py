@@ -1,4 +1,4 @@
-"""Сквозной аудит на чистых данных: строки → нормализация → правила цены → связки → результат с итогом по строкам."""
+"""Сквозной аудит на чистых данных: строки → нормализация → правила цены и оплат → связки → результат."""
 
 from __future__ import annotations
 
@@ -19,6 +19,8 @@ from secondkey.engine.models import (
     SupplierProfile,
 )
 from secondkey.engine.normalize import normalize
+from secondkey.engine.payments import Payment, advance_findings, profiles
+from secondkey.engine.registry import RegistryRecord
 from secondkey.engine.rules import AuditConfig, run_all
 
 
@@ -59,12 +61,20 @@ def analyze(
     cards: dict[str, SupplierCard] | None = None,
     staff: list[StaffRef] | None = None,
     hash_inn: Callable[[str], str] | None = None,
+    payments: list[Payment] | None = None,
+    registry: dict[str, RegistryRecord] | None = None,
+    network: dict[tuple[str, str], dict] | None = None,
 ) -> tuple[list[AuditFinding], list[SupplierProfile]]:
-    """Правила цены, затем связки: связкам нужны ценовые находки по строкам пары."""
+    """Правила цены и оплат, затем связки: связкам нужны ценовые находки и профили оплат."""
     cfg = cfg or AuditConfig()
     findings = run_all(norm, cfg, market.lookup if market is not None else None)
-    links, profiles = run_links(norm, findings, cfg, cards, staff, hash_inn)
-    return findings + links, profiles
+    dates = [n.line.date for n in norm] + [x.date for x in payments or []]
+    end = max(dates) if dates else None
+    profs = profiles(norm, payments, cfg, end) if payments and end else {}
+    if profs:
+        findings += advance_findings(profs, norm, cfg, end)
+    links, suppliers = run_links(norm, findings, cfg, cards, staff, hash_inn, profs, registry, network)
+    return findings + links, suppliers
 
 
 def audit_lines(
@@ -76,10 +86,12 @@ def audit_lines(
     cards: dict[str, SupplierCard] | None = None,
     staff: list[StaffRef] | None = None,
     hash_inn: Callable[[str], str] | None = None,
+    payments: list[Payment] | None = None,
+    registry: dict[str, RegistryRecord] | None = None,
 ) -> AuditResult:
     norm = normalize(lines)
-    findings, profiles = analyze(norm, cfg, market, cards, staff, hash_inn)
-    return build_result(company, lines, norm, findings, warnings, profiles)
+    findings, suppliers = analyze(norm, cfg, market, cards, staff, hash_inn, payments, registry)
+    return build_result(company, lines, norm, findings, warnings, suppliers)
 
 
 def audit_file(
@@ -89,6 +101,9 @@ def audit_file(
     cfg: AuditConfig | None = None,
     staff: list[StaffRef] | None = None,
     hash_inn: Callable[[str], str] | None = None,
+    registry: dict[str, RegistryRecord] | None = None,
 ) -> AuditResult:
     imp = import_registry(path)
-    return audit_lines(imp.lines, company, market, cfg, imp.warnings, imp.suppliers, staff, hash_inn)
+    return audit_lines(
+        imp.lines, company, market, cfg, imp.warnings, imp.suppliers, staff, hash_inn, imp.payments, registry
+    )

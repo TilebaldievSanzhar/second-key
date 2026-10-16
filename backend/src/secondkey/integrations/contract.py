@@ -55,6 +55,17 @@ class StaffIn(BaseModel):
     role: str | None = Field(default=None, max_length=100, description="Должность: «прораб», «снабженец»")
 
 
+class PaymentIn(BaseModel):
+    """Оплата поставщику: списание с расчётного счёта или расходный кассовый ордер с видом «оплата поставщику»."""
+
+    date: date
+    supplier: str = Field(min_length=1, max_length=300, description="Как в строках закупок")
+    supplier_inn: str | None = Field(default=None, max_length=32)
+    amount: Decimal = Field(gt=0, description="Сумма с НДС")
+    doc: str | None = Field(default=None, max_length=300, description="Номер и дата документа")
+    purpose: str | None = Field(default=None, max_length=1000, description="Назначение платежа")
+
+
 class PurchasesIn(BaseModel):
     source: str = Field(default="1c", max_length=64, description="Откуда строки: 1c:bp30, 1c:ut11, mcp, …")
     period_start: date | None = None
@@ -62,6 +73,7 @@ class PurchasesIn(BaseModel):
     lines: list[PurchaseIn] = Field(min_length=1, max_length=200_000)
     suppliers: list[SupplierIn] = Field(default=[], max_length=50_000)
     staff: list[StaffIn] = Field(default=[], max_length=20_000)
+    payments: list[PaymentIn] = Field(default=[], max_length=200_000)
 
     def records(self) -> list[dict]:
         return [ln.model_dump(mode="json") for ln in self.lines]
@@ -71,4 +83,5 @@ class PurchasesIn(BaseModel):
         return {
             "suppliers": [x.model_dump(mode="json", exclude_none=True) for x in self.suppliers],
             "staff": [x.model_dump(mode="json", exclude_none=True) for x in self.staff],
+            "payments": [x.model_dump(mode="json", exclude_none=True) for x in self.payments],
         }

@@ -1,16 +1,18 @@
 // «Связи»: кто у кого покупает и где сошлись следы. Связка — вопрос, а не вывод; денег она не добавляет.
 // Только собственнику и финансам: следы о поставщиках и сотрудниках (docs/adr/0006-supplier-links.md).
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, Navigate } from "react-router";
-import type { LinkItem, LinksOverview } from "../api/client";
+import { api, unwrap, type LinkItem, type LinksOverview } from "../api/client";
 import { Icon } from "../components/Icon";
 import { KeyStatus } from "../components/KeyPair";
 import { LinkMatrix } from "../components/LinkMatrix";
 import { RunPicker } from "../components/RunPicker";
 import { Empty, ErrorNote, Skeleton } from "../components/State";
+import { useToast } from "../components/Toast";
 import { TraceGroups, TraceList } from "../components/Traces";
 import { date, moneyShort, share } from "../format";
 import { GROUPS, TRACE_TEXT, traceSummaries } from "../questions";
-import { canSeeLinks, useCurrentRun, useLinks, useRole } from "../session";
+import { canSeeLinks, useCapabilities, useCurrentRun, useLinks, useRole } from "../session";
 import { MobileHead } from "./Layout";
 
 export function LinksPage() {
@@ -120,6 +122,8 @@ function Content({ data, runId }: { data: LinksOverview; runId: string }) {
         )}
       </section>
 
+      <RegistryNote runId={runId} />
+
       {weak.length > 0 && (
         <section className="block">
           <details className="weak">
@@ -148,6 +152,41 @@ function Content({ data, runId }: { data: LinksOverview; runId: string }) {
         </section>
       )}
     </>
+  );
+}
+
+// Сведения реестра: агрегатор по ключу — одной кнопкой; без ключа — вручную в карточке поставщика
+function RegistryNote({ runId }: { runId: string }) {
+  const caps = useCapabilities();
+  const qc = useQueryClient();
+  const toast = useToast();
+  const fetch = useMutation({
+    mutationFn: () => unwrap(api.POST("/api/audits/{run_id}/registry/fetch", { params: { path: { run_id: runId } } })),
+    onSuccess: () => {
+      toast({ text: "Запросили сведения реестра — следы обновятся через минуту" });
+      window.setTimeout(() => qc.invalidateQueries({ queryKey: ["links", runId] }), 20000);
+    },
+    onError: (e) => toast({ kind: "error", text: e.message }),
+  });
+  const provider = caps.data?.registry;
+  return (
+    <section className="block">
+      <div className="block-head">
+        <h2>Сведения реестра</h2>
+        {provider && (
+          <button type="button" className="btn btn-secondary btn-sm" disabled={fetch.isPending} onClick={() => fetch.mutate()}>
+            Проверить поставщиков · {provider}
+          </button>
+        )}
+      </div>
+      <p className="muted small">
+        Статус, дата регистрации, руководитель и учредители усиливают следы: недействующий поставщик — налоговый риск,
+        общий руководитель у «конкурентов» — повод спросить.{" "}
+        {provider
+          ? "Агрегатор проверяет сначала поставщиков со следами, потом крупных; ответ хранится 30 дней."
+          : "Агрегатор подключается по договору; пока — вручную: откройте карточку поставщика и внесите главное из выписки Минюста."}
+      </p>
+    </section>
   );
 }
 

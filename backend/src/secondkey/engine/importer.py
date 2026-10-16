@@ -19,6 +19,7 @@ from pathlib import Path
 from secondkey.engine.inn import clean_inn
 from secondkey.engine.models import PurchaseLine, SupplierCard
 from secondkey.engine.numbers import parse_decimal
+from secondkey.engine.payments import Payment
 
 # поле → синонимы заголовка (нижний регистр); порядок полей важен:
 # «сумма ндс» должна уйти в vat раньше, чем «сумма» заберёт её в amount
@@ -52,6 +53,18 @@ FIELD_SYNONYMS: list[tuple[str, tuple[str, ...]]] = [
 ]
 REQUIRED = ("date", "supplier", "item", "qty")
 
+# оплаты поставщикам — отдельный лист книги («Оплаты», «Платежи», «Списания»): связкам нужны авансы и сроки оплат
+PAYMENT_SYNONYMS: list[tuple[str, tuple[str, ...]]] = [
+    ("supplier_inn", ("инн контрагента", "инн получателя", "инн поставщика", "инн")),
+    ("date", ("дата платежа", "дата оплаты", "дата документа", "дата")),
+    ("doc_no", ("номер документа", "номер платежа", "документ", "номер")),
+    ("supplier", ("контрагент", "получатель", "поставщик")),
+    ("amount", ("сумма платежа", "сумма оплаты", "сумма документа", "сумма")),
+    ("purpose", ("назначение платежа", "назначение")),
+]
+PAYMENT_REQUIRED = ("date", "supplier", "amount")
+PAYMENT_SHEET = re.compile(r"оплат|плат[её]ж|списан", re.I)
+
 
 def missing_fields(mapping: dict[str, int]) -> list[str]:
     """Обязательные поля без колонки; цена считается и из суммы, поэтому нужна хотя бы одна из двух."""
@@ -71,18 +84,21 @@ class ImportResult:
     header_row: int  # номер строки шапки (1-based)
     warnings: list[str] = field(default_factory=list)
     suppliers: dict[str, SupplierCard] = field(default_factory=dict)  # имя поставщика → реквизиты из колонок
+    payments: list[Payment] = field(default_factory=list)  # оплаты поставщикам — с листа «Оплаты», если он есть
 
 
 def _norm_header(v: object) -> str:
     return re.sub(r"\s+", " ", str(v or "")).strip().lower()
 
 
-def map_columns(header: list[object]) -> dict[str, int]:
+def map_columns(
+    header: list[object], synonyms_by_field: list[tuple[str, tuple[str, ...]]] | None = None
+) -> dict[str, int]:
     """Поле → индекс колонки. Точное совпадение важнее вхождения; колонка — одному полю."""
     cells = [_norm_header(h) for h in header]
     used: set[int] = set()
     mapping: dict[str, int] = {}
-    for fld, synonyms in FIELD_SYNONYMS:
+    for fld, synonyms in synonyms_by_field or FIELD_SYNONYMS:
         best: tuple[int, int] | None = None  # (ранг, индекс): меньше — лучше
         for idx, cell in enumerate(cells):
             if idx in used or not cell:
@@ -135,15 +151,24 @@ def parse_number(v: object) -> Decimal | None:
     return parse_decimal(str(v))
 
 
-def _read_rows(path: Path) -> list[list[object]]:
+def _read_book(path: Path) -> list[tuple[str, list[list[object]]]]:
+    """Листы книги (название, строки); у CSV — один безымянный лист."""
     if path.suffix.lower() in (".xlsx", ".xlsm"):
         import openpyxl
 
         wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
         try:
-            return [list(r) for r in wb.worksheets[0].iter_rows(values_only=True)]
+            return [(ws.title, [list(r) for r in ws.iter_rows(values_only=True)]) for ws in wb.worksheets]
         finally:
             wb.close()  # read_only держит файл открытым: на Windows временный файл иначе не удалить
+    return [("", _read_csv(path))]
+
+
+def _read_rows(path: Path) -> list[list[object]]:
+    return _read_book(path)[0][1]
+
+
+def _read_csv(path: Path) -> list[list[object]]:
     raw = path.read_bytes()
     for enc in ("utf-8-sig", "cp1251"):
         try:
@@ -215,7 +240,8 @@ def import_registry(
 ) -> ImportResult:
     """Импорт реестра. mapping/header_row — подтверждённое человеком сопоставление (иначе автопоиск)."""
     path = Path(path)
-    rows = _read_rows(path)
+    book = _read_book(path)
+    rows = book[0][1]
     if mapping is not None and header_row:
         missing = missing_fields(mapping)
         if missing:
@@ -229,7 +255,76 @@ def import_registry(
                 "«Номенклатура/Наименование», «Количество»"
             )
         hdr_idx, mapping = found
-    return _build(rows[hdr_idx + 1 :], mapping, header_row=hdr_idx + 1, first_row_no=hdr_idx + 2)
+    result = _build(rows[hdr_idx + 1 :], mapping, header_row=hdr_idx + 1, first_row_no=hdr_idx + 2)
+    for title, sheet in book[1:]:
+        if PAYMENT_SHEET.search(title) or any(
+            "назначение платежа" in _norm_header(c) for r in sheet[:25] for c in r if c is not None
+        ):
+            result.payments += payments_from_rows(sheet, title, result.warnings)
+    return result
+
+
+def payments_from_rows(rows: list[list[object]], sheet: str, warnings: list[str]) -> list[Payment]:
+    """Оплаты поставщикам с листа книги: шапка — первая строка, где нашлись дата, получатель и сумма."""
+    header = next(
+        (
+            i
+            for i, row in enumerate(rows[:25])
+            if all(f in map_columns(row, PAYMENT_SYNONYMS) for f in PAYMENT_REQUIRED)
+        ),
+        None,
+    )
+    if header is None:
+        warnings.append(f"лист «{sheet}»: не нашли шапку оплат (дата, контрагент, сумма) — оплаты не учтены")
+        return []
+    mapping = map_columns(rows[header], PAYMENT_SYNONYMS)
+
+    def cell(r: list[object], fld: str) -> object:
+        idx = mapping.get(fld)
+        return r[idx] if idx is not None and idx < len(r) else None
+
+    out = []
+    for j, r in enumerate(rows[header + 1 :], start=header + 2):
+        d = parse_date(cell(r, "date"))
+        supplier = re.sub(r"\s+", " ", str(cell(r, "supplier") or "")).strip()
+        amount = parse_number(cell(r, "amount"))
+        if d is None or not supplier or amount is None or amount <= 0:
+            continue
+        out.append(
+            Payment(
+                date=d,
+                supplier=supplier,
+                amount=amount,
+                supplier_inn=clean_inn(cell(r, "supplier_inn")),
+                doc_no=str(cell(r, "doc_no")).strip() if cell(r, "doc_no") not in (None, "") else None,
+                purpose=str(cell(r, "purpose")).strip() if cell(r, "purpose") not in (None, "") else None,
+                payment_id=f"p{j}",
+            )
+        )
+    return out
+
+
+def import_payments(records: list[dict[str, object]]) -> list[Payment]:
+    """Оплаты из JSON-выгрузки 1С (поле payments контракта)."""
+    out = []
+    for i, r in enumerate(records, start=1):
+        d = parse_date(r.get("date"))
+        amount = parse_number(r.get("amount"))
+        supplier = re.sub(r"\s+", " ", str(r.get("supplier") or "")).strip()
+        if d is None or not supplier or amount is None or amount <= 0:
+            continue
+        out.append(
+            Payment(
+                date=d,
+                supplier=supplier,
+                amount=amount,
+                supplier_inn=clean_inn(r.get("supplier_inn")),
+                doc_no=str(r["doc"]).strip() if r.get("doc") else None,
+                purpose=str(r["purpose"]).strip() if r.get("purpose") else None,
+                payment_id=f"p{i}",
+            )
+        )
+    return out
 
 
 # поля контракта JSON-выгрузки (интеграции с 1С) → поля движка

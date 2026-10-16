@@ -132,6 +132,8 @@ class SupplierProfile:
     skus: int
     card: SupplierCard | None = None
     traces: list[Trace] = field(default_factory=list)
+    payment: dict | None = None  # как платят: engine/payments.PaymentProfile.as_dict()
+    registry: dict | None = None  # сведения реестра, использованные в прогоне
 
 
 @dataclass

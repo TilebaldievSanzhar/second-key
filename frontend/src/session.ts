@@ -72,6 +72,11 @@ export function useLinks(runId: string | undefined, enabled = true) {
   });
 }
 
+/** Что настроено на сервере: пароли 1С (SK_DATA_KEY), ИИ, агрегатор реестров. */
+export function useCapabilities(enabled = true) {
+  return useQuery({ queryKey: ["capabilities"], enabled, queryFn: () => unwrap(api.GET("/api/integrations/capabilities")) });
+}
+
 /** Поставщики проверки (досье без позиций): найти карточку по имени из вопроса. */
 export function useRunSuppliers(runId: string | undefined, enabled = true) {
   return useQuery({

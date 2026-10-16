@@ -245,6 +245,7 @@ function Card({ f }: { f: FindingDetail }) {
           <Facts f={f} unit={u} buyer={buyer} />
 
           {isLink && <LinkTraces f={f} buyer={buyer} />}
+          {f.code === "P-09" && <OpenPayments f={f} />}
 
           {buyer && (
             <p className="note note-accent">
@@ -265,7 +266,7 @@ function Card({ f }: { f: FindingDetail }) {
           {buyer && chart}
           {buyer && ALT_CODES.has(f.code) && <Alternatives findingId={f.id} />}
 
-          <Lines lines={f.lines} unit={u} total={f.overpayment} file={run.data?.filename} signal={isSignal(f)} />
+          {f.lines.length > 0 && <Lines lines={f.lines} unit={u} total={f.overpayment} file={run.data?.filename} signal={isSignal(f)} />}
         </div>
 
         <aside className="card-aside">
@@ -301,6 +302,7 @@ function Card({ f }: { f: FindingDetail }) {
 
 function Facts({ f, unit, buyer }: { f: FindingDetail; unit: string | null; buyer: boolean }) {
   if (f.code === "LINK") return <LinkFacts f={f} buyer={buyer} />;
+  if (f.code === "P-09") return <AdvanceFacts f={f} />;
   const u = unitText(unit);
   const ev = (f.evidence ?? {}) as Record<string, unknown>;
   const cheaper = (ev.cheaper_suppliers as string[] | undefined)?.[0];
@@ -386,6 +388,75 @@ function LinkFacts({ f, buyer }: { f: FindingDetail; buyer: boolean }) {
         </div>
       )}
     </div>
+  );
+}
+
+type SincePayment = { date: string; amount: string; doc?: string | null; purpose?: string | null };
+
+// Аванс без поставки: деньги под риском, а не переплата — в итог не идут
+function AdvanceFacts({ f }: { f: FindingDetail }) {
+  const ev = (f.evidence ?? {}) as { advance?: string; advance_since?: string; days?: number; paid?: string; delivered?: string };
+  return (
+    <div className="facts">
+      <div className="fact fact-money">
+        <span className="fact-label">Аванс без поставки</span>
+        <Money value={ev.advance ?? null} tone="over" size="xl" />
+        <span className="fact-sub">
+          держится {ev.days ?? "—"} дн. с {date(ev.advance_since)} · деньги под риском, не переплата
+        </span>
+      </div>
+      <div className="fact">
+        <span className="fact-label">Оплачено за период</span>
+        <span className="fact-value">{moneyShort(ev.paid)}</span>
+        <span className="fact-sub">поставлено на {moneyShort(ev.delivered)}</span>
+      </div>
+      <div className="fact desktop-only">
+        <span className="fact-label">Ответственный</span>
+        <span className="fact-value">{f.responsible ?? "не указан"}</span>
+        <span className="fact-sub">основной снабженец по поставщику</span>
+      </div>
+    </div>
+  );
+}
+
+// хронология с даты, когда возник аванс: какие оплаты ушли и сколько за это время поставлено
+function OpenPayments({ f }: { f: FindingDetail }) {
+  const ev = (f.evidence ?? {}) as { since_payments?: SincePayment[]; advance_since?: string; since_paid?: string; since_delivered?: string };
+  const rows = ev.since_payments ?? [];
+  if (!rows.length) return null;
+  return (
+    <section className="block">
+      <div className="block-head">
+        <h2>Оплаты с {date(ev.advance_since)}</h2>
+        <span className="muted small">
+          оплачено {moneyShort(ev.since_paid)}, поставлено {moneyShort(ev.since_delivered)}
+        </span>
+      </div>
+      <div className="table-wrap">
+        <table className="table table-tight">
+          <thead>
+            <tr>
+              <th>Дата</th>
+              <th>Документ</th>
+              <th className="r">Сумма, сом</th>
+              <th className="desktop-cell">Назначение</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((p, i) => (
+              <tr key={p.date + i}>
+                <td className="num">{date(p.date)}</td>
+                <td className="mono">{docNumber(p.doc)}</td>
+                <td className="r num">{int(p.amount)}</td>
+                <td className="desktop-cell ellipsis" title={p.purpose ?? ""}>
+                  {p.purpose ?? "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 

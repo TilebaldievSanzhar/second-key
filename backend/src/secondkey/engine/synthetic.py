@@ -25,6 +25,9 @@
   C1 → L-C  ОсОО «Карьер Сервис» — «второй поставщик» песка и щебня с теми же телефоном и счётом,
             что у ИП Жумабаев; оба выше рынка
   L-D       ИП Бекова С. (пиломатериалы) — ИНН совпадает с ИНН прораба
+Оплаты поставщикам (engine/payments.py): обычным — раз в месяц за поставки месяца, через 10–25 дней после его
+конца; ОсОО «Бетон Плюс Строй» — вперёд, за 2–4 дня до поставки, и аванс 1,45 млн без поставки (P-09);
+ИП Сыдыков — в день поставки или на следующий, вне очереди.
 Истинная переплата строки = цена строки − честная цена основного поставщика на ту же дату.
 """
 
@@ -817,7 +820,57 @@ class Generator:
             l.anomalies.append(f"A6-{n + 1}")
 
 
-def write_xlsx(lines: list[GenLine], path: Path) -> dict[str, GenLine]:
+ADVANCE = Decimal("1450000")  # аванс «Бетон Плюс Строй» без поставки
+PERIOD_END = date(2026, 9, 30)
+
+
+def payments(lines: list[GenLine], seed: int = 13) -> list[dict]:
+    """Оплаты поставщикам в контракте выгрузки (списания с расчётного счёта с видом «оплата поставщику»)."""
+    rng = random.Random(seed)
+    by_supplier: dict[str, list[GenLine]] = {}
+    for l in sorted(lines, key=lambda x: (x.d, x.doc)):
+        if any(t.startswith("A5") for t in l.anomalies):
+            continue  # повтор документа в учёте — платили один раз
+        by_supplier.setdefault(l.supplier, []).append(l)
+    out: list[tuple[date, str, Decimal, str]] = []
+    for supplier, rows in by_supplier.items():
+        if supplier == B_SUPPLIER:
+            for l in rows:
+                out.append(
+                    (l.d - timedelta(days=rng.randint(2, 4)), supplier, l.amount, f"предоплата по счёту {l.doc_in}")
+                )
+            out.append(
+                (PERIOD_END - timedelta(days=52), supplier, ADVANCE, "предоплата за бетон М350, поставка в сентябре")
+            )
+        elif supplier == "ИП Сыдыков А.Т.":
+            for l in rows:
+                out.append(
+                    (l.d + timedelta(days=rng.choice([0, 1])), supplier, l.amount, f"оплата по счёту {l.doc_in}")
+                )
+        else:
+            months: dict[tuple[int, int], Decimal] = {}
+            for l in rows:
+                months[(l.d.year, l.d.month)] = months.get((l.d.year, l.d.month), Decimal("0")) + l.amount
+            for (y, m), amount in months.items():
+                month_end = date(y + m // 12, m % 12 + 1, 1) - timedelta(days=1)
+                when = month_end + timedelta(days=rng.randint(10, 25))
+                if when <= PERIOD_END:  # поставки последнего месяца на конец периода ещё не оплачены
+                    out.append((when, supplier, amount, f"оплата за поставки {m:02d}.{y}"))
+    out.sort(key=lambda x: (x[0], x[1]))
+    return [
+        {
+            "date": d.isoformat(),
+            "doc": f"Платёжное поручение {5000 + i:06d} от {d:%d.%m.%Y}",
+            "supplier": supplier,
+            "supplier_inn": SUPPLIERS[supplier][1],
+            "amount": str(_q(amount)),
+            "purpose": purpose,
+        }
+        for i, (d, supplier, amount, purpose) in enumerate(out, start=1)
+    ]
+
+
+def write_xlsx(lines: list[GenLine], path: Path, pays: list[dict] | None = None) -> dict[str, GenLine]:
     """Пишет выгрузку «как из 1С»: шапка отчёта, затем таблица. Возвращает line_id → строка."""
     import openpyxl
 
@@ -877,6 +930,23 @@ def write_xlsx(lines: list[GenLine], path: Path) -> dict[str, GenLine]:
     widths = (11, 46, 30, 16, 44, 8, 11, 11, 13, 11, 22, 16, 12, 11, 20, 20, 30)
     for col, w in zip("ABCDEFGHIJKLMNOPQ", widths, strict=True):
         ws.column_dimensions[col].width = w
+    if pays:
+        # второй лист — оплаты поставщикам, как отчёт «Списание с расчётного счёта» из 1С
+        wp = wb.create_sheet("Оплаты поставщикам")
+        wp.append(["Дата", "Документ", "Контрагент", "ИНН контрагента", "Сумма", "Назначение платежа"])
+        for x in pays:
+            wp.append(
+                [
+                    date.fromisoformat(x["date"]),
+                    x["doc"],
+                    x["supplier"],
+                    x["supplier_inn"],
+                    float(x["amount"]),
+                    x["purpose"],
+                ]
+            )
+        for col, w in zip("ABCDEF", (11, 40, 30, 16, 13, 50), strict=True):
+            wp.column_dimensions[col].width = w
     path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(path)
     return by_id
@@ -946,7 +1016,7 @@ def build(out_dir: Path, seed: int = 11) -> dict:
     gen = Generator(seed)
     lines = gen.generate()
     xlsx = out_dir / "registry.xlsx"
-    by_id = write_xlsx(lines, xlsx)
+    by_id = write_xlsx(lines, xlsx, payments(lines))
 
     truth_lines = {}
     instances: dict[str, dict] = {}
@@ -983,14 +1053,20 @@ def build(out_dir: Path, seed: int = 11) -> dict:
             "L-A": {
                 "supplier": "ИП Сыдыков А.Т.",
                 "responsible": "Асанов Б.",
-                "traces": ["L-01", "L-04", "L-09", "L-10"],
+                "traces": ["L-01", "L-04", "L-07", "L-09", "L-10"],
             },
-            "L-B": {"supplier": B_SUPPLIER, "responsible": NEW_BUYER, "traces": ["L-01", "L-04", "L-05", "L-10"]},
+            "L-B": {
+                "supplier": B_SUPPLIER,
+                "responsible": NEW_BUYER,
+                "traces": ["L-01", "L-04", "L-05", "L-07", "L-10"],
+            },
             "L-C1": {"supplier": "ИП Жумабаев Н.", "responsible": "Токтосунов Э.", "traces": ["L-11"]},
             "L-C2": {"supplier": C_SUPPLIER, "responsible": "Токтосунов Э.", "traces": ["L-11"]},
             "L-D": {"supplier": "ИП Бекова С.", "responsible": "Токтосунов Э.", "traces": ["L-12"]},
         },
         "staff": STAFF,
+        # авансы без поставки (P-09): поставщик и сумма превышения оплат над поставками
+        "advances": [{"supplier": B_SUPPLIER, "amount": str(ADVANCE)}],
     }
     (out_dir / "truth.json").write_text(json.dumps(truth, ensure_ascii=False, indent=1), encoding="utf-8")
     with (out_dir / "market_raw.jsonl").open("w", encoding="utf-8") as f:

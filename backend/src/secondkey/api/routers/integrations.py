@@ -13,6 +13,7 @@ from sqlalchemy import select
 
 from secondkey.api.deps import UPLOAD, Member, Session, require
 from secondkey.api.schemas import (
+    CapabilitiesOut,
     ConnectionIn,
     ConnectionOut,
     ConnectionTestOut,
@@ -202,17 +203,19 @@ async def sync(connection_id: uuid.UUID, body: SyncIn, session: Session, member:
     return {"status": "queued"}
 
 
-@router.get("/capabilities")
-async def capabilities(member: Member = require(*UPLOAD)) -> dict[str, bool | str]:
+@router.get("/capabilities", response_model=CapabilitiesOut)
+async def capabilities(member: Member = require(*UPLOAD)) -> CapabilitiesOut:
     """Что настроено на сервере: можно ли хранить пароли 1С (SK_DATA_KEY) и включён ли ИИ (SK_LLM_API_KEY)."""
     from secondkey import llm
     from secondkey.config import settings
+    from secondkey.registries import provider_name
 
-    return {
-        "secrets": bool(settings.data_key.get_secret_value()),
-        "llm": llm.enabled(),
-        "public_url": settings.public_url,
-    }
+    return CapabilitiesOut(
+        secrets=bool(settings.data_key.get_secret_value()),
+        llm=llm.enabled(),
+        public_url=settings.public_url,
+        registry=provider_name() or "",
+    )
 
 
 @router.get("/profiles")

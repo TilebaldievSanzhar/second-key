@@ -29,17 +29,19 @@ from secondkey.db.models import (
     FindingLine,
     MarketPoint,
     Organization,
+    Payment,
     PurchaseLine,
     RunStatus,
     RunSupplier,
     Upload,
 )
 from secondkey.db.session import session_scope
-from secondkey.engine.importer import import_records, import_registry, preview_registry
+from secondkey.engine.importer import import_payments, import_records, import_registry, preview_registry
 from secondkey.engine.inn import inn_hash
 from secondkey.engine.market import MarketPoint as EnginePoint
 from secondkey.engine.market import MarketStore
-from secondkey.engine.models import StaffRef, SupplierCard
+from secondkey.engine.models import AuditFinding, NormLine, StaffRef, SupplierCard
+from secondkey.engine.models import PurchaseLine as EngineLine
 from secondkey.engine.normalize import normalize
 from secondkey.engine.pipeline import analyze, build_result
 from secondkey.engine.report import render_html
@@ -281,6 +283,7 @@ async def execute_run(run_id: uuid.UUID) -> None:
         params, mapping = dict(run.params), run.mapping
         company = org.name if org else "Компания"
         salt = (org.settings or {}).get("inn_salt") if org else None
+        org_id = run.org_id
 
     try:
         await _set_stage(run_id, RunStatus.importing, 5, started_at=func.now(), error=None)
@@ -297,6 +300,7 @@ async def execute_run(run_id: uuid.UUID) -> None:
         except ValueError as exc:
             raise UserFacingError(str(exc)) from exc
         cards, staff = _cards_and_staff(imp.suppliers, payload)
+        payments = imp.payments + (await asyncio.to_thread(import_payments, payload.get("payments") or []))
         if not imp.lines:
             raise UserFacingError("В таблице не нашлось ни одной строки закупки с датой, поставщиком и количеством")
 
@@ -305,17 +309,25 @@ async def execute_run(run_id: uuid.UUID) -> None:
         norm = await _ai_normalize(norm, imp.warnings)
 
         await _set_stage(run_id, RunStatus.analyzing, 55)
+        from secondkey.services import network, registry
+
         async with session_scope() as s:
             market = await _market_for(s, {n.sku for n in norm if n.sku})
+            reg = await registry.records_for(s, org_id, {n.line.supplier_inn for n in norm if n.line.supplier_inn})
+            net = await network.stats_for(
+                s,
+                await s.get(Organization, org_id),
+                {(n.line.supplier_inn, n.sku) for n in norm if n.line.supplier_inn and n.sku},
+            )
         cfg = config_from_params(params)
         hash_fn = (lambda inn: inn_hash(salt, inn)) if salt and staff else None
         findings, suppliers = await asyncio.to_thread(
-            analyze, norm, cfg, market if len(market) else None, cards, staff, hash_fn
+            analyze, norm, cfg, market if len(market) else None, cards, staff, hash_fn, payments, reg, net
         )
         result = build_result(company, imp.lines, norm, findings, imp.warnings, suppliers)
 
         await _set_stage(run_id, RunStatus.reporting, 80)
-        await _persist(run_id, result, len(market))
+        await _persist(run_id, result, len(market), payments)
         html = await asyncio.to_thread(render_html, result, len(market))
         basic = await asyncio.to_thread(render_html, result, len(market), False)
         async with session_scope() as s:
@@ -384,12 +396,86 @@ async def _ai_normalize(norm, warnings: list[str]):
     return norm
 
 
-async def _persist(run_id: uuid.UUID, result, market_points: int) -> None:
+def build_finding(org_id: uuid.UUID, run_id: uuid.UUID, f: AuditFinding, line_ids: dict, by_key: dict) -> Finding:
+    """Находка движка → строка БД. Ответственный — из evidence (связка, аванс) или самый частый по строкам."""
+    who = Counter(by_key[l].line.responsible for l in f.line_ids if l in by_key and by_key[l].line.responsible)
+    finding = Finding(
+        org_id=org_id,
+        run_id=run_id,
+        code=f.code,
+        severity=f.severity,
+        title=f.title,
+        message=f.message,
+        sku=f.sku,
+        sku_label=f.sku_label,
+        supplier=f.supplier,
+        responsible=(f.evidence or {}).get("responsible") or (who.most_common(1)[0][0] if who else None),
+        reference=f.reference,
+        reference_kind=f.reference_kind,
+        overpayment=f.overpayment,
+        evidence=_jsonable(f.evidence),
+    )
+    finding.lines = [
+        FindingLine(line_id=line_ids[l], overpayment=f.line_overpayment.get(l, Decimal("0")))
+        for l in dict.fromkeys(f.line_ids)
+        if l in line_ids
+    ]
+    return finding
+
+
+def engine_line(r: PurchaseLine) -> NormLine:
+    """Строка из БД → нормализованная строка движка (для пересчёта связок без нового прогона)."""
+    line = EngineLine(
+        line_id=r.line_key,
+        date=r.date,
+        supplier=r.supplier,
+        item_raw=r.item_raw,
+        qty=r.qty,
+        unit_raw=r.unit_raw,
+        price=r.price,
+        amount=r.amount,
+        doc_no=r.doc_no,
+        supplier_inn=r.supplier_inn,
+        vat_included=r.vat_included,
+        object_name=r.object_name,
+        responsible=r.responsible,
+        source_row=r.source_row,
+        doc_in_no=r.doc_in_no,
+        doc_in_date=r.doc_in_date,
+    )
+    return NormLine(
+        line, r.sku, r.sku_label, r.head, r.unit_base, r.qty_base, r.price_base, r.norm_status, r.norm_note or ""
+    )
+
+
+def run_supplier_fields(p) -> dict:
+    """Досье поставщика движка → поля RunSupplier (без org/run)."""
+    return {
+        "name": p.name,
+        "inn": p.inn,
+        "inn_kind": p.inn_kind,
+        "inn_date": p.inn_date,
+        "spend": p.spend,
+        "lines": p.lines,
+        "share": p.share,
+        "first_date": p.first_date,
+        "last_date": p.last_date,
+        "skus": p.skus,
+        "buyers": _jsonable(p.buyers),
+        "card": _jsonable(asdict(p.card)) if p.card else None,
+        "traces": [_jsonable({k: v for k, v in asdict(t).items() if k != "line_ids"}) for t in p.traces],
+        "payment": _jsonable(p.payment) if p.payment else None,
+        "registry_data": _jsonable(p.registry) if p.registry else None,
+    }
+
+
+async def _persist(run_id: uuid.UUID, result, market_points: int, payments: list | None = None) -> None:
     async with session_scope() as s:
         run = await s.get(AuditRun, run_id)
         org_id = run.org_id
         await s.execute(delete(Finding).where(Finding.run_id == run_id))
         await s.execute(delete(RunSupplier).where(RunSupplier.run_id == run_id))
+        await s.execute(delete(Payment).where(Payment.run_id == run_id))
         await s.execute(delete(PurchaseLine).where(PurchaseLine.run_id == run_id))
 
         line_ids: dict[str, uuid.UUID] = {}
@@ -435,52 +521,28 @@ async def _persist(run_id: uuid.UUID, result, market_points: int) -> None:
 
         by_key = {nl.line.line_id: nl for nl in result.lines}
         for f in result.findings:
-            who = Counter(by_key[l].line.responsible for l in f.line_ids if l in by_key and by_key[l].line.responsible)
-            finding = Finding(
-                org_id=org_id,
-                run_id=run_id,
-                code=f.code,
-                severity=f.severity,
-                title=f.title,
-                message=f.message,
-                sku=f.sku,
-                sku_label=f.sku_label,
-                supplier=f.supplier,
-                responsible=who.most_common(1)[0][0] if who else None,
-                reference=f.reference,
-                reference_kind=f.reference_kind,
-                overpayment=f.overpayment,
-                evidence=_jsonable(f.evidence),
-            )
-            finding.lines = [
-                FindingLine(line_id=line_ids[l], overpayment=f.line_overpayment.get(l, Decimal("0")))
-                for l in dict.fromkeys(f.line_ids)
-                if l in line_ids
-            ]
-            s.add(finding)
+            s.add(build_finding(org_id, run_id, f, line_ids, by_key))
+        pay_rows = [
+            {
+                "id": uuid.uuid4(),
+                "org_id": org_id,
+                "run_id": run_id,
+                "payment_key": x.payment_id or f"p{i}",
+                "date": x.date,
+                "supplier": x.supplier[:300],
+                "supplier_inn": x.supplier_inn,
+                "amount": x.amount,
+                "doc_no": (x.doc_no or "")[:300] or None,
+                "purpose": x.purpose,
+            }
+            for i, x in enumerate(payments or [], start=1)
+        ]
+        for i in range(0, len(pay_rows), 1000):
+            await s.execute(insert(Payment), pay_rows[i : i + 1000])
 
         linked = {f.supplier for f in result.findings if f.code == "LINK"}
         for p in result.suppliers:
-            s.add(
-                RunSupplier(
-                    org_id=org_id,
-                    run_id=run_id,
-                    name=p.name,
-                    inn=p.inn,
-                    inn_kind=p.inn_kind,
-                    inn_date=p.inn_date,
-                    spend=p.spend,
-                    lines=p.lines,
-                    share=p.share,
-                    first_date=p.first_date,
-                    last_date=p.last_date,
-                    skus=p.skus,
-                    buyers=_jsonable(p.buyers),
-                    card=_jsonable(asdict(p.card)) if p.card else None,
-                    traces=[_jsonable({k: v for k, v in asdict(t).items() if k != "line_ids"}) for t in p.traces],
-                    linked=p.name in linked,
-                )
-            )
+            s.add(RunSupplier(org_id=org_id, run_id=run_id, linked=p.name in linked, **run_supplier_fields(p)))
 
         statuses = Counter(nl.status for nl in result.lines)
         run.period_start, run.period_end = result.period if result.period else (None, None)

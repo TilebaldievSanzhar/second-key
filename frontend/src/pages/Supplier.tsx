@@ -6,11 +6,12 @@ import { ApiError, api, unwrap, type SupplierDetail } from "../api/client";
 import { FindingRow } from "../components/FindingRow";
 import { Icon } from "../components/Icon";
 import { Money } from "../components/Money";
+import { PaymentsBlock, RegistryBlock } from "../components/SupplierBlocks";
 import { Empty, ErrorNote, Skeleton } from "../components/State";
 import { TraceGroups, TraceList } from "../components/Traces";
 import { LINES, count, date, dayMonth, int, moneyShort, pct, share, signedShare, unit as unitText } from "../format";
 import { GROUPS } from "../questions";
-import { canSeeLinks, useCurrentRun, useRole, useRunFindings } from "../session";
+import { canSeeLinks, useCapabilities, useCurrentRun, useRole, useRunFindings } from "../session";
 import { MobileHead } from "./Layout";
 
 export function SupplierPage() {
@@ -67,6 +68,7 @@ const FIELD: Record<string, string> = { phone: "телефон", bank_account: "
 
 function Card({ s, runId }: { s: SupplierDetail; runId: string }) {
   const findings = useRunFindings(runId);
+  const caps = useCapabilities();
   const mine = (findings.data ?? []).filter((f) => f.supplier === s.name);
   const groups = GROUPS.filter((g) => s.traces.some((t) => t.group === g.key)).map((g) => g.key);
   const top = s.buyers[0];
@@ -125,6 +127,9 @@ function Card({ s, runId }: { s: SupplierDetail; runId: string }) {
           <p className="muted">Следов связки нет: цены, поведение и реквизиты поставщика без особенностей.</p>
         )}
       </section>
+
+      <RegistryBlock s={s} runId={runId} provider={caps.data?.registry || undefined} />
+      <PaymentsBlock s={s} />
 
       {s.items.length > 0 && (
         <section className="block">

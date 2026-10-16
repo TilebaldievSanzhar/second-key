@@ -301,11 +301,14 @@ def build_mcp() -> FastMCP:
         period_start: str | None = None,
         period_end: str | None = None,
         suppliers: list[dict[str, Any]] | None = None,
+        payments: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Отправить строки закупок (поля: date, doc, supplier, supplier_inn, item, unit, qty, price, amount, vat,
         object, responsible, ref, doc_in_no, doc_in_date) — запускается проверка. suppliers — реквизиты поставщиков
         из карточек контрагентов (name как в строках, inn, phone, email, address, bank_account): по ним видны
-        «конкуренты» с одним владельцем. Нужен токен с правом «push»."""
+        «конкуренты» с одним владельцем. payments — оплаты поставщикам (date, supplier, supplier_inn, amount, doc,
+        purpose) из списаний с расчётного счёта и кассы с видом «оплата поставщику»: по ним видны авансы без
+        поставки и оплаты вне очереди. Нужен токен с правом «push»."""
         ctx = _token.get()
         if not ctx or "push" not in ctx[1]:
             raise PermissionError("у токена нет права «push» — выдайте его в настройках «Второго ключа»")
@@ -316,6 +319,7 @@ def build_mcp() -> FastMCP:
                 period_end=period_end,
                 lines=lines,
                 suppliers=suppliers or [],
+                payments=payments or [],
             )
         except ValidationError as exc:
             raise ValueError(f"строки не прошли проверку: {exc.errors()[:5]}") from exc

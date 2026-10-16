@@ -222,6 +222,46 @@ class RunSupplier(IdMixin, Base):
     card: Mapped[dict[str, Any] | None] = mapped_column()  # телефон, e-mail, адрес, счёт
     traces: Mapped[list[Any]] = mapped_column(default=list)  # все следы, в т.ч. не ставшие вопросом
     linked: Mapped[bool] = mapped_column(Boolean, default=False)  # есть находка LINK
+    payment: Mapped[dict[str, Any] | None] = mapped_column()  # как платят: предоплата, задержка, аванс
+    # сведения реестра, использованные в прогоне; «registry» у декларативной базы занято — атрибут с суффиксом
+    registry_data: Mapped[dict[str, Any] | None] = mapped_column("registry")
+
+
+class Payment(IdMixin, Base):
+    """Оплата поставщику из выгрузки: списание с расчётного счёта или из кассы."""
+
+    __tablename__ = "payments"
+    __table_args__ = (Index("ix_payments_run_supplier", "run_id", "supplier"),)
+
+    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("audit_runs.id", ondelete="CASCADE"))
+    payment_key: Mapped[str] = mapped_column(String(32))  # «p12» — номер записи в выгрузке
+    date: Mapped[date] = mapped_column(Date)
+    supplier: Mapped[str] = mapped_column(String(300))
+    supplier_inn: Mapped[str | None] = mapped_column(String(32))
+    amount: Mapped[Decimal] = mapped_column(Money)
+    doc_no: Mapped[str | None] = mapped_column(String(300))
+    purpose: Mapped[str | None] = mapped_column(Text)
+
+
+class RegistryRecordRow(IdMixin, CreatedMixin, Base):
+    """Сведения реестра о поставщике по ИНН.
+
+    org_id пусто — общий кэш агрегатора (публичные сведения, одни для всех клиентов);
+    org_id задан — ручная проверка этой организации по выписке Минюста: видна только ей.
+    """
+
+    __tablename__ = "registry_records"
+    __table_args__ = (
+        UniqueConstraint("inn", "source", "org_id", name="uq_registry_records_inn", postgresql_nulls_not_distinct=True),
+    )
+
+    inn: Mapped[str] = mapped_column(String(32), index=True)
+    org_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"))
+    source: Mapped[str] = mapped_column(String(32))  # manual | statsnet | …
+    data: Mapped[dict[str, Any]] = mapped_column(default=dict)  # engine/registry.RegistryRecord.as_dict()
+    checked_at: Mapped[datetime] = mapped_column()
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
 
 
 class MarketPoint(IdMixin, CreatedMixin, Base):

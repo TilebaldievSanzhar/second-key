@@ -1,7 +1,7 @@
 // Язык вопросов: правила словами, заголовок-вопрос из полей находки, статусы двух ключей.
 // Интерфейс задаёт вопрос, а не обвиняет (docs/design/FRONTEND_SPEC.md § 8).
 import type { Finding, FindingStatus, Trace } from "./api/client";
-import { share } from "./format";
+import { compact, share } from "./format";
 
 export const RULE_TEXT: Record<string, string> = {
   "P-01": "Дороже, чем у другого поставщика в те же недели",
@@ -11,6 +11,7 @@ export const RULE_TEXT: Record<string, string> = {
   "P-05": "Дробление закупки ниже порога согласования",
   "P-06": "Документ учтён дважды",
   "P-07": "Цена не сходится с единицей измерения",
+  "P-09": "Аванс без поставки",
   LINK: "Связка снабженца и поставщика",
 };
 
@@ -24,7 +25,7 @@ export const STATUS_TEXT: Record<FindingStatus, string> = {
 
 /** Статус словами; у связки «подтверждено» — сама связка, а не переплата. */
 export const statusText = (s: FindingStatus, code?: string) =>
-  code === "LINK" && s === "confirmed" ? "Связка подтверждена" : STATUS_TEXT[s];
+  s === "confirmed" && code === "LINK" ? "Связка подтверждена" : s === "confirmed" && code === "P-09" ? "Аванс не закрыт" : STATUS_TEXT[s];
 
 export const WAITING: FindingStatus[] = ["open", "answered"];
 export const DECIDED: FindingStatus[] = ["confirmed", "justified", "data_error"];
@@ -43,7 +44,13 @@ const LINK_DECISIONS = [
   { status: "justified", label: "Обосновано", key: "2" },
   { status: "data_error", label: "Ошибка учёта", key: "3" },
 ] as const;
-export const decisionsFor = (code: string) => (code === "LINK" ? LINK_DECISIONS : DECISIONS);
+// аванс без поставки — не переплата: подтверждается, что деньги ушли и материала нет
+const ADVANCE_DECISIONS = [
+  { status: "confirmed", label: "Аванс не закрыт", key: "1" },
+  { status: "justified", label: "Обосновано", key: "2" },
+  { status: "data_error", label: "Ошибка учёта", key: "3" },
+] as const;
+export const decisionsFor = (code: string) => (code === "LINK" ? LINK_DECISIONS : code === "P-09" ? ADVANCE_DECISIONS : DECISIONS);
 
 // --- связки снабженца и поставщика (engine/links.py) ---------------------------------------------
 
@@ -64,6 +71,9 @@ export const TRACE_TEXT: Record<string, string> = {
   "L-10": "Возраст по номеру ИНН",
   "L-11": "Общие реквизиты с другим поставщиком",
   "L-12": "ИНН совпадает с ИНН сотрудника",
+  "L-03": "Другим клиентам продаёт дешевле",
+  "L-07": "Оплаты поставщику",
+  "L-13": "Налоговый риск по реестру",
   "P-01": "Дороже другого поставщика в те же недели",
   "P-02": "Цена растёт быстрее рынка",
   "P-03": "Дороже рынка",
@@ -119,6 +129,17 @@ export function traceSummary(t: Trace): string {
       return typeof f.other === "string" ? `Общие реквизиты с ${f.other}` : TRACE_TEXT[t.code]!;
     case "L-12":
       return typeof f.staff === "string" ? `ИНН сотрудника: ${f.staff}${typeof f.role === "string" ? `, ${f.role}` : ""}` : TRACE_TEXT[t.code]!;
+    case "L-07":
+      if (f.kind === "advance") return `Аванс ${compact(num(f.advance))} сом без поставки, ${num(f.days)} дн.`;
+      if (f.kind === "prepay") return `${share(num(f.share))} поставок — по предоплате (у остальных ${share(num(f.others))})`;
+      if (f.kind === "fast") return `Платят через ${Math.round(num(f.delay))} дн. после поставки, остальным — через ${Math.round(num(f.others))}`;
+      return TRACE_TEXT[t.code]!;
+    case "L-13": {
+      const r = Array.isArray(f.reasons) ? String(f.reasons[0] ?? "") : "";
+      return r ? `Налоговый риск: ${r}` : TRACE_TEXT[t.code]!;
+    }
+    case "L-03":
+      return Number.isFinite(num(f.premium)) ? `Другим клиентам дешевле на ${share(num(f.premium))} (обезличенно)` : TRACE_TEXT[t.code]!;
     default:
       return TRACE_TEXT[t.code] ?? t.code;
   }
@@ -174,6 +195,8 @@ export function questionTitle(f: Finding & { evidence?: Evidence }): string {
     }
     case "P-07":
       return `Цена «${sku}» не сходится с единицей — ошибка в учёте?`;
+    case "P-09":
+      return `Где материал или деньги по авансу ${who}?`;
     case "LINK":
       // вопрос о выборе поставщика, без выводов: его видит и снабженец
       return f.sku_label ? `Как выбрали ${who} для закупок «${lower(f.sku_label)}»?` : `Как выбрали ${who}?`;

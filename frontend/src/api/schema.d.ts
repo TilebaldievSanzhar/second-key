@@ -123,6 +123,26 @@ export interface paths {
         patch: operations["patch_settings_api_org_settings_patch"];
         trace?: never;
     };
+    "/api/org/network": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Network
+         * @description Обезличенный обмен ценами с другими клиентами: даёте свои — видите сеть (не меньше трёх компаний).
+         */
+        patch: operations["patch_network_api_org_network_patch"];
+        trace?: never;
+    };
     "/api/org/members": {
         parameters: {
             query?: never;
@@ -298,6 +318,47 @@ export interface paths {
         get: operations["supplier_api_audits__run_id__suppliers__supplier_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/audits/{run_id}/suppliers/{supplier_id}/registry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Registry
+         * @description Ручная проверка по выписке: сохраняется для организации по ИНН, связки проверки пересчитываются сразу —
+         *     ответы снабжения и решения по уже заданным вопросам остаются.
+         */
+        put: operations["save_registry_api_audits__run_id__suppliers__supplier_id__registry_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/audits/{run_id}/registry/fetch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fetch Registry
+         * @description Запросить сведения у агрегатора (Statsnet по ключу): сначала поставщики со следами, затем крупные.
+         */
+        post: operations["fetch_registry_api_audits__run_id__registry_fetch_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -867,6 +928,20 @@ export interface components {
              */
             findings?: number | null;
         };
+        /**
+         * CapabilitiesOut
+         * @description Что настроено на сервере.
+         */
+        CapabilitiesOut: {
+            /** Secrets */
+            secrets: boolean;
+            /** Llm */
+            llm: boolean;
+            /** Public Url */
+            public_url: string;
+            /** Registry */
+            registry: string;
+        };
         /** ConnectionIn */
         ConnectionIn: {
             /** Name */
@@ -1395,6 +1470,11 @@ export interface components {
             /** Alias */
             alias?: string | null;
         };
+        /** NetworkIn */
+        NetworkIn: {
+            /** Opt In */
+            opt_in: boolean;
+        };
         /** OrgOut */
         OrgOut: {
             /**
@@ -1407,6 +1487,11 @@ export interface components {
             /** Currency */
             currency: string;
             settings: components["schemas"]["OrgSettings"];
+            /**
+             * Network Opt In
+             * @default false
+             */
+            network_opt_in: boolean;
         };
         /** OrgRef */
         OrgRef: {
@@ -1482,6 +1567,72 @@ export interface components {
             items: components["schemas"]["RunOut"][];
             /** Total */
             total: number;
+        };
+        /**
+         * PaymentIn
+         * @description Оплата поставщику: списание с расчётного счёта или расходный кассовый ордер с видом «оплата поставщику».
+         */
+        PaymentIn: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Supplier
+             * @description Как в строках закупок
+             */
+            supplier: string;
+            /** Supplier Inn */
+            supplier_inn?: string | null;
+            /**
+             * Amount
+             * @description Сумма с НДС
+             */
+            amount: number | string;
+            /**
+             * Doc
+             * @description Номер и дата документа
+             */
+            doc?: string | null;
+            /**
+             * Purpose
+             * @description Назначение платежа
+             */
+            purpose?: string | null;
+        };
+        /** PaymentOut */
+        PaymentOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Amount */
+            amount: string;
+            /** Doc No */
+            doc_no: string | null;
+            /** Purpose */
+            purpose: string | null;
+        };
+        /** PaymentProfileOut */
+        PaymentProfileOut: {
+            /** Paid */
+            paid: string;
+            /** Delivered */
+            delivered: string;
+            /** Payments */
+            payments: number;
+            /** Prepay Share */
+            prepay_share: string | null;
+            /** Delay Days */
+            delay_days: string | null;
+            /** Advance */
+            advance: string;
+            /** Advance Since */
+            advance_since: string | null;
+            /** Unpaid */
+            unpaid: string;
         };
         /** PersonRef */
         PersonRef: {
@@ -1646,6 +1797,83 @@ export interface components {
              * @default []
              */
             staff: components["schemas"]["StaffIn"][];
+            /**
+             * Payments
+             * @default []
+             */
+            payments: components["schemas"]["PaymentIn"][];
+        };
+        /**
+         * RegistryIn
+         * @description Ручная проверка по выписке Минюста (record.minjust.gov.kg) или другому источнику.
+         */
+        RegistryIn: {
+            /**
+             * Status
+             * @description Как в выписке: «Действующее», «Ликвидировано»
+             */
+            status?: string | null;
+            /** Active */
+            active?: boolean | null;
+            /** Registered */
+            registered?: string | null;
+            /** Director */
+            director?: string | null;
+            /**
+             * Founders
+             * @default []
+             */
+            founders: string[];
+            /** Address */
+            address?: string | null;
+            /**
+             * Unreliable
+             * @description В реестре недобросовестных поставщиков госзакупок
+             */
+            unreliable?: boolean | null;
+            /**
+             * Url
+             * @description Ссылка на выписку или источник
+             */
+            url?: string | null;
+        };
+        /**
+         * RegistryOut
+         * @description Сведения реестра о поставщике: ручная проверка по выписке или агрегатор.
+         */
+        RegistryOut: {
+            /** Inn */
+            inn: string;
+            /** Source */
+            source: string;
+            /** Name */
+            name?: string | null;
+            /** Status */
+            status?: string | null;
+            /** Active */
+            active?: boolean | null;
+            /** Registered */
+            registered?: string | null;
+            /** Director */
+            director?: string | null;
+            /**
+             * Founders
+             * @default []
+             */
+            founders: string[];
+            /** Address */
+            address?: string | null;
+            /** Unreliable */
+            unreliable?: boolean | null;
+            /**
+             * Risks
+             * @default []
+             */
+            risks: string[];
+            /** Checked At */
+            checked_at?: string | null;
+            /** Url */
+            url?: string | null;
         };
         /**
          * Role
@@ -1860,6 +2088,13 @@ export interface components {
             items: components["schemas"]["SupplierItem"][];
             /** Shared */
             shared: components["schemas"]["SharedRequisite"][];
+            registry?: components["schemas"]["RegistryOut"] | null;
+            payment?: components["schemas"]["PaymentProfileOut"] | null;
+            /**
+             * Payments List
+             * @default []
+             */
+            payments_list: components["schemas"]["PaymentOut"][];
         };
         /**
          * SupplierIn
@@ -2300,6 +2535,41 @@ export interface operations {
             };
         };
     };
+    patch_network_api_org_network_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-org-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NetworkIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     members_api_org_members_get: {
         parameters: {
             query?: never;
@@ -2692,6 +2962,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SupplierDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_registry_api_audits__run_id__suppliers__supplier_id__registry_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-org-id"?: string | null;
+            };
+            path: {
+                run_id: string;
+                supplier_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegistryIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupplierDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    fetch_registry_api_audits__run_id__registry_fetch_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-org-id"?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -3504,9 +3847,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: boolean | string;
-                    };
+                    "application/json": components["schemas"]["CapabilitiesOut"];
                 };
             };
             /** @description Validation Error */

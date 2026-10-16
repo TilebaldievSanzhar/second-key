@@ -58,6 +58,13 @@ class AuditConfig:
     link_person_max_age: int = 70
     link_min_spend_share: Decimal = Decimal("0.005")  # следы личности — у поставщиков от 0,5% закупок
     link_price_money_min: Decimal = Decimal("50000")  # ценовой след из P-01/P-02/P-03 — от этой суммы
+    # оплаты поставщикам (engine/payments.py)
+    link_advance_min: Decimal = Decimal("100000")  # аванс без поставки — от этой суммы
+    link_advance_days: int = 30  # и держится столько дней
+    link_prepay_share: Decimal = Decimal("0.8")  # почти всё по предоплате
+    link_prepay_others_max: Decimal = Decimal("0.3")  # когда остальным почти не платят вперёд
+    link_fast_pay_days: int = 3  # платят через день-два
+    link_fast_pay_others_min: int = 14  # когда остальным — через две недели и дольше
 
 
 # поставщик рынка: (sku, дата, окно в днях) → цены за базовую единицу

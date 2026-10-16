@@ -57,6 +57,18 @@ class Settings(BaseSettings):
     data_key: SecretStr = SecretStr("")
     public_url: str = "http://localhost:5173"  # адрес для ссылок в дайджестах и инструкциях
 
+    # реестры юрлиц через агрегатор (secondkey/registries): без ключа — только ручная проверка по выписке
+    registry_provider: Literal["", "statsnet"] = ""
+    statsnet_api_key: SecretStr = SecretStr("")
+    statsnet_base_url: str = "https://statsnet.co/api/v1"
+    registry_ttl_days: int = 30  # сведения агрегатора старше — запрашиваются заново
+    registry_fetch_limit: int = 60  # поставщиков за одну проверку: сначала со следами, потом крупные
+
+    # сеть клиентов (services/network.py): сравнение цен поставщика с другими клиентами — только обезличенно
+    network_min_orgs: int = 3  # других компаний, согласившихся на обмен, не меньше
+    network_min_points: int = 10  # их покупок по позиции не меньше
+    network_window_days: int = 365  # покупки других компаний за последний год их проверки
+
     @property
     def llm_enabled(self) -> bool:
         return bool(self.llm_api_key.get_secret_value()) and self.env != "test"

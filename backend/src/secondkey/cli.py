@@ -112,11 +112,13 @@ def seed_demo(
             members = [await add_member(s, org, e, n, r, DEMO_PASSWORD, a) for e, n, r, a in DEMO_USERS]
             added = await save_points(s, points_from_raw(synthetic.market_points()))
             # как из обработки 1С: строки, карточки поставщиков и сотрудники (хэши ИНН с солью организации)
+            lines = synthetic.Generator(seed).generate()
             payload = PurchasesIn(
                 source="1c:bp30",
-                lines=synthetic.records(synthetic.Generator(seed).generate()),
+                lines=synthetic.records(lines),
                 suppliers=synthetic.supplier_cards(),
                 staff=synthetic.staff(inn_salt(org)),
+                payments=synthetic.payments(lines),
             )
             audit = await submit_purchases(s, org.id, payload, members[2].user_id)
             run_id = audit.id
@@ -184,6 +186,7 @@ def bench(
                 "links_recall": metrics["links"]["recall"],
                 "links_trace_recall": metrics["links"]["trace_recall"],
                 "false_links": metrics["links"]["false_links"],
+                "advances": metrics["advances"],
             },
             ensure_ascii=False,
         )
@@ -192,6 +195,7 @@ def bench(
         (money["line_precision"] or 0) < min_precision
         or (money["ratio_found_to_true"] or 0) < min_money
         or (metrics["links"]["recall"] or 0) < min_links
+        or metrics["advances"]["detected"] < metrics["advances"]["planted"]
     ):
         raise typer.Exit(1)
 

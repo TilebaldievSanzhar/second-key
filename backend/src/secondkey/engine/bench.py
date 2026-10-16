@@ -114,6 +114,19 @@ def _links_metrics(res: AuditResult, truth_links: dict) -> dict:
     }
 
 
+def _advance_metrics(res: AuditResult, truth: list[dict]) -> dict:
+    """Авансы без поставки: найден ли подсаженный и нет ли лишних."""
+    found = {f.supplier: Decimal(f.evidence["advance"]) for f in res.findings if f.code == "P-09"}
+    hit = [
+        a for a in truth if a["supplier"] in found and found[a["supplier"]] >= Decimal(a["amount"]) * Decimal("0.95")
+    ]
+    return {
+        "planted": len(truth),
+        "detected": len(hit),
+        "false": sorted(set(found) - {a["supplier"] for a in truth}),
+    }
+
+
 def run(corpus_dir: Path, out_dir: Path | None = None, overrides: dict | None = None) -> tuple:
     truth = json.loads((corpus_dir / "truth.json").read_text(encoding="utf-8"))
     market = load_market(corpus_dir / "market_raw.jsonl")
@@ -238,6 +251,7 @@ def run(corpus_dir: Path, out_dir: Path | None = None, overrides: dict | None = 
         },
         "fp_examples": sorted(fp_lines)[:15],
         "links": _links_metrics(res, truth.get("links", {})),
+        "advances": _advance_metrics(res, truth.get("advances", [])),
     }
     if out_dir:
         out_dir.mkdir(parents=True, exist_ok=True)
